@@ -92,18 +92,15 @@ export async function handleStart(
   const isUserAdmin = isAdmin(deps.auth, msg.from.id);
   const greeting = [
     "👋 Xin chào mọi người, mình là Bảo Bảo đây! 🌱",
-    'Sự "<b>trưởng thành AGILE</b>" đến từ chính thói quen hàng ngày của team mình:',
-    "<b>Nhìn lại - Điều chỉnh - Tiến lên.</b>",
-    "Bảo Bảo sẽ đóng vai trò người đồng hành, giúp team duy trì nhịp độ report đều đặn và minh bạch dữ liệu. Tụi mình ưu tiên làm đúng, làm chất và cùng nhau học hỏi từ mỗi lần release nhé 🚀",
     "",
-    "• /report [dd-mm | dd-mm-yyyy] — xem report ngay",
+    'Sự <b>"trưởng thành AGILE"</b> đến từ chính thói quen hàng ngày của team mình:',
+    "",
+    "<b>Nhìn lại - Điều chỉnh - Tiến lên.</b>",
+    "",
+    "Mình sẽ đóng vai trò người đồng hành, giúp team duy trì nhịp độ report đều đặn và đầy đủ nhé. Tụi mình ưu tiên làm đúng, làm chất và cùng nhau trưởng thành qua mỗi nhé 🚀",
   ];
   if (isUserAdmin) {
-    greeting.push(
-      "• /project — (admin) cấu hình project cho nhóm",
-      "",
-      "Chọn 1 project bên dưới để nhóm này nhận report định kỳ:",
-    );
+    greeting.push("", "Chọn dự án bên dưới để Bảo Bảo gửi report hàng ngày nhé!");
   }
 
   const text = greeting.join("\n");
