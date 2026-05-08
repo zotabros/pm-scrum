@@ -92,7 +92,17 @@ npm run build
 npm start
 ```
 
-## 3. Deploy với systemd (Ubuntu/Debian server)
+## 3. Deploy lên aaPanel (CI/CD bằng GitHub Actions self-hosted runner)
+
+Hướng dẫn đầy đủ tại [`deploy/aapanel.md`](deploy/aapanel.md). Tóm tắt:
+
+- Self-hosted runner (label `self-hosted, linux`) build + rsync vào `/www/wwwroot/<domain>` rồi `pm2 reload`.
+- PM2 chạy bot webhook (`ecosystem.config.cjs` → `pm-scrum-bot`).
+- aaPanel **Cron** chạy `node dist/index.js` 9:00 AM T2–T6 (thay launchd).
+- aaPanel **Nginx + Let's Encrypt** reverse-proxy `https://<domain>` → `127.0.0.1:8081` (template tại `deploy/nginx.conf.example`).
+- Push lên `main` = deploy. Re-run workflow cũ trong GH Actions UI = rollback.
+
+## 4. Deploy với systemd (Ubuntu/Debian server)
 
 ```bash
 sudo mkdir -p /opt/scrum-digest
@@ -117,11 +127,11 @@ journalctl -u scrum-digest.service --since today
 systemctl start scrum-digest.service            # trigger manual run
 ```
 
-## 4. Monitoring
+## 5. Monitoring
 
 Set `HEALTHCHECK_URL` trong `.env` (ví dụ từ https://healthchecks.io) — script sẽ ping sau mỗi lần chạy thành công, bạn nhận alert nếu bỏ sót ngày.
 
-## 5. Cấu trúc
+## 6. Cấu trúc
 
 ```
 src/
@@ -149,7 +159,7 @@ src/
 └── types.ts
 ```
 
-## 6. Hạn chế đã biết
+## 7. Hạn chế đã biết
 
 - Không tự phát hiện ngày nghỉ lễ giữa tuần — report T5 sau T4 nghỉ vẫn chỉ lấy 1 ngày (T4).
 - `hoursInProgress` là wall-clock, tính cả đêm/cuối tuần. V2 có thể thêm `business_hours_only: true`.
