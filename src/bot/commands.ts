@@ -91,11 +91,10 @@ export async function handleStart(
   }
   const isUserAdmin = isAdmin(deps.auth, msg.from.id);
   const greeting = [
-    "Bảo Bảo xin chào 🌱",
-    "",
-    '"Trưởng thành AGILE" không đến từ công cụ, mà từ thói quen mỗi ngày — nhìn lại, điều chỉnh, tiến tới.',
-    "",
-    "Mình ở đây để giúp bạn hình thành thói quen đó: break task chi tiết, kéo task đều đặn, tập trung sprint goal.",
+    "👋 Xin chào mọi người, mình là Bảo Bảo đây! 🌱",
+    'Sự "<b>trưởng thành AGILE</b>" đến từ chính thói quen hàng ngày của team mình:',
+    "<b>Nhìn lại - Điều chỉnh - Tiến lên.</b>",
+    "Bảo Bảo sẽ đóng vai trò người đồng hành, giúp team duy trì nhịp độ report đều đặn và minh bạch dữ liệu. Tụi mình ưu tiên làm đúng, làm chất và cùng nhau học hỏi từ mỗi lần release nhé 🚀",
     "",
     "• /report [dd-mm | dd-mm-yyyy] — xem report ngay",
   ];
@@ -106,7 +105,6 @@ export async function handleStart(
       "Chọn 1 project bên dưới để nhóm này nhận report định kỳ:",
     );
   }
-  greeting.push("", "Ship ít hơn, học nhiều hơn 🚀");
 
   const text = greeting.join("\n");
   if (isUserAdmin && deps.config.projects.length > 0) {

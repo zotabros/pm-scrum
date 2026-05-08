@@ -124,10 +124,11 @@ export async function handleReport(
 
   logger.info({ chatId, runDate, projects: projects.map((p) => p.key) }, "/report run");
 
+  const projectsLabel = projects.map((p) => `<b>${p.projectName}</b>`).join(", ");
   await sendTelegramMessage(
     deps.tg,
     chatId,
-    `Bảo Bảo đang tạo report cho ${projects.length} project. Chờ Bảo Bảo xíu nhé...`,
+    `Bảo Bảo đang tạo report cho dự án ${projectsLabel}. Chờ Bảo Bảo xíu nhé...`,
     { parse_mode: "HTML" },
   );
 
