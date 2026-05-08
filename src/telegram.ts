@@ -164,6 +164,38 @@ export async function getChatMember(
   });
 }
 
+export async function sendChatAction(
+  opts: TelegramOptions,
+  chatId: string,
+  action:
+    | "typing"
+    | "upload_photo"
+    | "upload_document" = "typing",
+): Promise<void> {
+  try {
+    await callBotApi(opts, "sendChatAction", { chat_id: chatId, action }, 5_000);
+  } catch {
+    // best-effort; never fail the parent task because of a typing ping
+  }
+}
+
+/**
+ * Begin a typing indicator that auto-refreshes every 4s (Telegram clears it
+ * after ~5s). Returns a stop() to clear the interval; the indicator fades on
+ * its own once we stop pinging.
+ */
+export function startTypingIndicator(
+  opts: TelegramOptions,
+  chatId: string,
+  action: "typing" | "upload_photo" = "typing",
+): () => void {
+  void sendChatAction(opts, chatId, action);
+  const handle = setInterval(() => {
+    void sendChatAction(opts, chatId, action);
+  }, 4_000);
+  return () => clearInterval(handle);
+}
+
 export async function setWebhook(
   opts: TelegramOptions,
   url: string,

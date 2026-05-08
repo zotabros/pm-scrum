@@ -1,5 +1,9 @@
 import type { TelegramMessage } from "../types.js";
-import { sendTelegramMessage, sendTelegramPhoto } from "../telegram.js";
+import {
+  sendTelegramMessage,
+  sendTelegramPhoto,
+  startTypingIndicator,
+} from "../telegram.js";
 import { isAuthorized } from "./auth.js";
 import { logger } from "../logger.js";
 import { getWindow } from "../window.js";
@@ -120,7 +124,15 @@ export async function handleReport(
 
   logger.info({ chatId, runDate, projects: projects.map((p) => p.key) }, "/report run");
 
+  await sendTelegramMessage(
+    deps.tg,
+    chatId,
+    `Bảo Bảo đang tạo report cho ${projects.length} project. Chờ Bảo Bảo xíu nhé...`,
+    { parse_mode: "HTML" },
+  );
+
   for (const p of projects) {
+    const stopTyping = startTypingIndicator(deps.tg, chatId, "typing");
     try {
       const { digest, burndownPng } = await buildDigest(deps.env, deps.config, p, now);
       const message = formatDigest({
@@ -134,6 +146,7 @@ export async function handleReport(
         await sendTelegramMessage(deps.tg, chatId, chunk);
       }
       if (burndownPng) {
+        const stopUploading = startTypingIndicator(deps.tg, chatId, "upload_photo");
         try {
           await sendTelegramPhoto(deps.tg, chatId, burndownPng, `burndown-${p.key}.png`);
         } catch (err) {
@@ -141,6 +154,8 @@ export async function handleReport(
             { project: p.key, chatId, err: (err as Error).message },
             "burndown photo send failed",
           );
+        } finally {
+          stopUploading();
         }
       }
     } catch (err) {
@@ -154,6 +169,8 @@ export async function handleReport(
         `Không tạo được report cho <b>${p.key}</b>. Lỗi: ${(err as Error).message}`,
         { parse_mode: "HTML" },
       );
+    } finally {
+      stopTyping();
     }
   }
 }
