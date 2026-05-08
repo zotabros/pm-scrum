@@ -6,6 +6,7 @@ import "dotenv/config";
 
 const ProjectSchema = z.object({
   key: z.string().min(1),
+  name: z.string().min(1).optional(),
   jira_instance: z.string().min(1).optional(),
 });
 

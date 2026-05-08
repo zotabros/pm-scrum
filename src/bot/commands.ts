@@ -14,7 +14,7 @@ export function buildProjectKeyboard(
 ): InlineKeyboardMarkup {
   const current = getChatProject(chatId);
   const buttons = config.projects.map((p) => ({
-    text: `${current === p.key ? "✅" : "⚪"} ${p.key}`,
+    text: `${current === p.key ? "✅" : "⚪"} ${p.name ?? p.key}`,
     callback_data: `proj:${p.key}`,
   }));
   const rows: InlineKeyboardMarkup["inline_keyboard"] = [];

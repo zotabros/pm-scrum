@@ -39,13 +39,15 @@ export async function handleProjectToggle(
   }
 
   const { subscribed, previous } = await toggle(projectKey, chatId);
+  const nameOf = (k: string) =>
+    deps.config.projects.find((p) => p.key === k)?.name ?? k;
   let toast: string;
   if (!subscribed) {
-    toast = `Đã huỷ đăng ký ${projectKey}`;
+    toast = `Đã huỷ đăng ký ${nameOf(projectKey)}`;
   } else if (previous && previous !== projectKey) {
-    toast = `Đã chuyển từ ${previous} sang ${projectKey}`;
+    toast = `Đã chuyển từ ${nameOf(previous)} sang ${nameOf(projectKey)}`;
   } else {
-    toast = `Đã đăng ký ${projectKey}`;
+    toast = `Đã đăng ký ${nameOf(projectKey)}`;
   }
   await answerCallbackQuery(deps.tg, cb.id, toast);
   await editMessageReplyMarkup(

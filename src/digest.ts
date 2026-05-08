@@ -55,7 +55,11 @@ export async function resolveProjectSprintList(
     for (const p of all) candidates.push({ key: p.key, name: p.name });
   } else {
     for (const p of config.projects) {
-      candidates.push({ key: p.key, name: p.key, jiraInstance: p.jira_instance });
+      candidates.push({
+        key: p.key,
+        name: p.name ?? p.key,
+        jiraInstance: p.jira_instance,
+      });
     }
   }
 
