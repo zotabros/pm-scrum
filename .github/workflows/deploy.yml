@@ -39,7 +39,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$DEPLOY_DIR/data"
-          rsync -a --delete \
+          rsync -rlptD --delete --no-owner --no-group \
             --exclude='.env' \
             --exclude='config.yaml' \
             --exclude='data/' \
@@ -49,6 +49,9 @@ jobs:
             --exclude='launchd/' \
             --exclude='systemd/' \
             --exclude='*.log' \
+            --exclude='.well-known/' \
+            --exclude='proxy_cache_dir/' \
+            --exclude='logs/' \
             ./ "$DEPLOY_DIR/"
 
       - name: Install prod deps in deploy dir
