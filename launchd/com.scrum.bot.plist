@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.scrum.bot</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/node</string>
+        <string>/Volumes/Dev/www/ClaudeCode/ScrumMaster/dist/server.js</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Volumes/Dev/www/ClaudeCode/ScrumMaster</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>NODE_ENV</key>
+        <string>production</string>
+        <key>TZ</key>
+        <string>Asia/Ho_Chi_Minh</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Volumes/Dev/www/ClaudeCode/ScrumMaster/launchd/scrum-bot.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Volumes/Dev/www/ClaudeCode/ScrumMaster/launchd/scrum-bot.err.log</string>
+</dict>
+</plist>

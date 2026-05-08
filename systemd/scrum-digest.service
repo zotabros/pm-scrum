@@ -1,0 +1,15 @@
+[Unit]
+Description=Scrum Digest daily run
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/scrum-digest
+EnvironmentFile=/opt/scrum-digest/.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node /opt/scrum-digest/dist/index.js
+StandardOutput=journal
+StandardError=journal
+# Optional: forward failures to a separate unit (email, healthchecks.io bridge, etc.)
+# OnFailure=scrum-digest-alert.service
