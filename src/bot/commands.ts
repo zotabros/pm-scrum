@@ -7,14 +7,28 @@ import { sendTelegramMessage, type TelegramOptions } from "../telegram.js";
 import { getChatProject } from "../storage/subscriptions.js";
 import { isAdmin, isAllowedChat, type AuthDeps } from "./auth.js";
 import { logger } from "../logger.js";
+import type { ProjectNameMap } from "./project-names.js";
+
+export function displayName(
+  config: Config,
+  projectNames: ProjectNameMap,
+  key: string,
+): string {
+  return (
+    projectNames.get(key) ??
+    config.projects.find((p) => p.key === key)?.name ??
+    key
+  );
+}
 
 export function buildProjectKeyboard(
   config: Config,
+  projectNames: ProjectNameMap,
   chatId: string,
 ): InlineKeyboardMarkup {
   const current = getChatProject(chatId);
   const buttons = config.projects.map((p) => ({
-    text: `${current === p.key ? "✅" : "⚪"} ${p.name ?? p.key}`,
+    text: `${current === p.key ? "✅" : "⚪"} ${displayName(config, projectNames, p.key)}`,
     callback_data: `proj:${p.key}`,
   }));
   const rows: InlineKeyboardMarkup["inline_keyboard"] = [];
@@ -29,6 +43,7 @@ export interface CommandDeps {
   config: Config;
   auth: AuthDeps;
   env: Env;
+  projectNames: ProjectNameMap;
 }
 
 const PRIVATE_NOT_SUPPORTED =
@@ -52,7 +67,7 @@ export async function handleProject(
     });
     return;
   }
-  const keyboard = buildProjectKeyboard(deps.config, chatId);
+  const keyboard = buildProjectKeyboard(deps.config, deps.projectNames, chatId);
   await sendTelegramMessage(
     deps.tg,
     chatId,

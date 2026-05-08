@@ -3,6 +3,7 @@ import { logger } from "./logger.js";
 import { reload } from "./storage/subscriptions.js";
 import { startWebhookServer } from "./bot/webhook.js";
 import type { CommandDeps } from "./bot/commands.js";
+import { loadProjectNames, startProjectNameRefresh } from "./bot/project-names.js";
 
 async function main(): Promise<void> {
   const env = loadEnv();
@@ -11,6 +12,8 @@ async function main(): Promise<void> {
     throw new Error("TELEGRAM_WEBHOOK_SECRET is required to run the bot server");
   }
   reload();
+  const projectNames = await loadProjectNames(env, config);
+  const stopRefresh = startProjectNameRefresh(env, config, projectNames);
   const deps: CommandDeps = {
     tg: { botToken: env.TELEGRAM_BOT_TOKEN },
     config,
@@ -19,6 +22,7 @@ async function main(): Promise<void> {
       whitelist: env.TELEGRAM_ADMIN_USER_IDS,
     },
     env,
+    projectNames,
   };
   const server = startWebhookServer({
     port: env.TELEGRAM_WEBHOOK_PORT,
@@ -28,6 +32,7 @@ async function main(): Promise<void> {
 
   const shutdown = async (sig: string) => {
     logger.info({ sig }, "shutting down");
+    stopRefresh();
     try {
       await server.close();
     } catch (err) {

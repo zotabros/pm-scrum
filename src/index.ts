@@ -7,6 +7,7 @@ import { formatDigest, splitMessage } from "./format.js";
 import { sendTelegramMessage, sendTelegramPhoto } from "./telegram.js";
 import { reload as reloadSubscriptions } from "./storage/subscriptions.js";
 import { buildDigest, resolveProjectSprintList } from "./digest.js";
+import { loadProjectNames } from "./bot/project-names.js";
 import type { Env } from "./config.js";
 
 interface Cli {
@@ -65,7 +66,11 @@ async function main(): Promise<void> {
   logger.info({ runDate, weekdayLabel, window: win.label }, "starting run");
 
   reloadSubscriptions();
-  const projects = await resolveProjectSprintList(env, config, { filterKey: cli.project });
+  const projectNames = await loadProjectNames(env, config);
+  const projects = await resolveProjectSprintList(env, config, {
+    filterKey: cli.project,
+    projectNames,
+  });
   logger.info({ count: projects.length }, "projects with active sprints");
 
   let successCount = 0;

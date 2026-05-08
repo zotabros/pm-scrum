@@ -97,6 +97,7 @@ export async function handleReport(
 
   const projects = await resolveProjectSprintList(deps.env, deps.config, {
     filterChatId: chatId,
+    projectNames: deps.projectNames,
   });
 
   if (projects.length === 0) {

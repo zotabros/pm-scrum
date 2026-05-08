@@ -5,7 +5,7 @@ import {
 } from "../telegram.js";
 import { toggle } from "../storage/subscriptions.js";
 import { isAdmin } from "./auth.js";
-import { buildProjectKeyboard, type CommandDeps } from "./commands.js";
+import { buildProjectKeyboard, displayName, type CommandDeps } from "./commands.js";
 import { logger } from "../logger.js";
 
 export async function handleProjectToggle(
@@ -39,8 +39,7 @@ export async function handleProjectToggle(
   }
 
   const { subscribed, previous } = await toggle(projectKey, chatId);
-  const nameOf = (k: string) =>
-    deps.config.projects.find((p) => p.key === k)?.name ?? k;
+  const nameOf = (k: string) => displayName(deps.config, deps.projectNames, k);
   let toast: string;
   if (!subscribed) {
     toast = `Đã huỷ đăng ký ${nameOf(projectKey)}`;
@@ -54,7 +53,7 @@ export async function handleProjectToggle(
     deps.tg,
     message.chat.id,
     message.message_id,
-    buildProjectKeyboard(deps.config, chatId),
+    buildProjectKeyboard(deps.config, deps.projectNames, chatId),
   );
   logger.info(
     { chatId, projectKey, subscribed, previous, user: cb.from.id },

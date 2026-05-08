@@ -37,6 +37,8 @@ export interface ResolveOptions {
   filterKey?: string;
   /** When set, only include projects subscribed by this chat, and the resulting chatIds is just [filterChatId]. */
   filterChatId?: string;
+  /** Optional override for the project display name. Falls back to config name, then key. */
+  projectNames?: Map<string, string>;
 }
 
 export async function resolveProjectSprintList(
@@ -57,7 +59,7 @@ export async function resolveProjectSprintList(
     for (const p of config.projects) {
       candidates.push({
         key: p.key,
-        name: p.name ?? p.key,
+        name: opts.projectNames?.get(p.key) ?? p.name ?? p.key,
         jiraInstance: p.jira_instance,
       });
     }
