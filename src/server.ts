@@ -18,6 +18,7 @@ async function main(): Promise<void> {
       tg: { botToken: env.TELEGRAM_BOT_TOKEN },
       whitelist: env.TELEGRAM_ADMIN_USER_IDS,
     },
+    env,
   };
   const server = startWebhookServer({
     port: env.TELEGRAM_WEBHOOK_PORT,

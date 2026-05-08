@@ -76,8 +76,10 @@ export interface JiraCreds {
 
 /**
  * Resolve Jira credentials for a project. If `instance` is undefined or "default",
- * uses the env vars JIRA_BASE_URL / JIRA_EMAIL / JIRA_API_TOKEN. Otherwise reads
- * JIRA_<INSTANCE>_BASE_URL / _EMAIL / _API_TOKEN (instance uppercased).
+ * uses JIRA_BASE_URL / JIRA_EMAIL / JIRA_API_TOKEN. Otherwise reads
+ * JIRA_<INSTANCE>_BASE_URL (required) and falls back to JIRA_EMAIL / JIRA_API_TOKEN
+ * when JIRA_<INSTANCE>_EMAIL / JIRA_<INSTANCE>_API_TOKEN are not set — one Atlassian
+ * account often has access to multiple sites with the same token.
  */
 export function resolveJiraCreds(env: Env, instance?: string): JiraCreds {
   if (!instance || instance.toLowerCase() === "default") {
@@ -89,13 +91,13 @@ export function resolveJiraCreds(env: Env, instance?: string): JiraCreds {
   }
   const prefix = `JIRA_${instance.toUpperCase()}`;
   const baseUrl = process.env[`${prefix}_BASE_URL`];
-  const email = process.env[`${prefix}_EMAIL`];
-  const apiToken = process.env[`${prefix}_API_TOKEN`];
-  if (!baseUrl || !email || !apiToken) {
+  if (!baseUrl) {
     throw new Error(
-      `Missing env vars for Jira instance "${instance}": expected ${prefix}_BASE_URL, ${prefix}_EMAIL, ${prefix}_API_TOKEN`,
+      `Missing env var ${prefix}_BASE_URL for Jira instance "${instance}"`,
     );
   }
+  const email = process.env[`${prefix}_EMAIL`] || env.JIRA_EMAIL;
+  const apiToken = process.env[`${prefix}_API_TOKEN`] || env.JIRA_API_TOKEN;
   return { baseUrl, email, apiToken };
 }
 

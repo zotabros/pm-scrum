@@ -3,6 +3,7 @@ import { logger } from "../logger.js";
 import type { TelegramUpdate } from "../types.js";
 import { handleProject, handleStart, type CommandDeps } from "./commands.js";
 import { handleProjectToggle } from "./callbacks.js";
+import { handleReport } from "./report.js";
 
 const MAX_BODY = 1_000_000;
 const seenUpdates = new Set<number>();
@@ -42,6 +43,8 @@ async function dispatch(deps: CommandDeps, update: TelegramUpdate): Promise<void
     const cmd = commandName(update.message.text);
     if (cmd === "/project") {
       await handleProject(deps, update.message);
+    } else if (cmd === "/report") {
+      await handleReport(deps, update.message);
     } else if (cmd === "/start" || cmd === "/help") {
       await handleStart(deps, update.message);
     }

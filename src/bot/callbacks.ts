@@ -17,7 +17,7 @@ export async function handleProjectToggle(
   const projectKey = data.slice("proj:".length);
   const message = cb.message;
   if (!message) {
-    await answerCallbackQuery(deps.tg, cb.id, "Message hết hạn");
+    await answerCallbackQuery(deps.tg, cb.id, "Tin nhắn đã hết hạn");
     return;
   }
   const chatId = String(message.chat.id);
@@ -36,8 +36,8 @@ export async function handleProjectToggle(
 
   const { subscribed } = await toggle(projectKey, chatId);
   const toast = subscribed
-    ? `Đã subscribe ${projectKey}`
-    : `Đã huỷ subscribe ${projectKey}`;
+    ? `Đã đăng ký nhận report ${projectKey}`
+    : `Đã huỷ đăng ký ${projectKey}`;
   await answerCallbackQuery(deps.tg, cb.id, toast);
   await editMessageReplyMarkup(
     deps.tg,

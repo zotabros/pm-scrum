@@ -1,4 +1,4 @@
-import type { Config } from "../config.js";
+import type { Config, Env } from "../config.js";
 import type {
   InlineKeyboardMarkup,
   TelegramMessage,
@@ -29,6 +29,7 @@ export interface CommandDeps {
   tg: TelegramOptions;
   config: Config;
   auth: AuthDeps;
+  env: Env;
 }
 
 export async function handleProject(
@@ -48,7 +49,7 @@ export async function handleProject(
     return;
   }
   if (deps.config.projects.length === 0) {
-    await sendTelegramMessage(deps.tg, chatId, "Chưa có project nào trong config.", {
+    await sendTelegramMessage(deps.tg, chatId, "Chưa có project nào được cấu hình.", {
       parse_mode: "HTML",
     });
     return;
@@ -57,7 +58,7 @@ export async function handleProject(
   await sendTelegramMessage(
     deps.tg,
     chatId,
-    "Chọn project để subscribe / huỷ subscribe digest cho group này:",
+    "Chọn project để đăng ký / huỷ đăng ký nhận report cho nhóm này:",
     { reply_markup: keyboard, parse_mode: "HTML" },
   );
   logger.info({ chatId, user: msg.from.id }, "/project menu sent");
@@ -71,7 +72,7 @@ export async function handleStart(
   await sendTelegramMessage(
     deps.tg,
     chatId,
-    "ScrumMaster bot. Gõ /project để quản lý subscription cho group này.",
+    "Bảo Bảo xin chào.\n• /project — chọn project để nhận report định kỳ cho nhóm này\n• /report [dd-mm|dd-mm-yyyy] — xem report ngay (mặc định: hôm nay)",
     { parse_mode: "HTML" },
   );
 }

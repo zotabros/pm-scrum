@@ -1,0 +1,159 @@
+import type { TelegramMessage } from "../types.js";
+import { sendTelegramMessage, sendTelegramPhoto } from "../telegram.js";
+import { isAuthorized } from "./auth.js";
+import { logger } from "../logger.js";
+import { getWindow } from "../window.js";
+import { formatDigest, splitMessage } from "../format.js";
+import { buildDigest, resolveProjectSprintList } from "../digest.js";
+import type { CommandDeps } from "./commands.js";
+
+const DATE_RE = /^(\d{1,2})-(\d{1,2})(?:-(\d{4}))?$/;
+
+/**
+ * Parse a `dd-mm` or `dd-mm-yyyy` string in the configured timezone and return
+ * a Date pinned to 09:00 +07:00 of that day (matching the CLI --date convention).
+ * Returns null when the input is malformed or represents an invalid calendar date.
+ */
+export function parseReportDate(
+  input: string | undefined,
+  now: Date,
+  timezone: string,
+): Date | null {
+  if (!input) {
+    const today = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(now);
+    return new Date(`${today}T09:00:00+07:00`);
+  }
+  const m = DATE_RE.exec(input.trim());
+  if (!m) return null;
+  const day = Number(m[1]);
+  const month = Number(m[2]);
+  const yearPart = m[3];
+  let year: number;
+  if (yearPart) {
+    year = Number(yearPart);
+  } else {
+    year = Number(
+      new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric" }).format(now),
+    );
+  }
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  // Validate calendar (e.g. reject 31-02)
+  const probe = new Date(Date.UTC(year, month - 1, day));
+  if (
+    probe.getUTCFullYear() !== year ||
+    probe.getUTCMonth() !== month - 1 ||
+    probe.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  const yyyy = String(year).padStart(4, "0");
+  const mm = String(month).padStart(2, "0");
+  const dd = String(day).padStart(2, "0");
+  return new Date(`${yyyy}-${mm}-${dd}T09:00:00+07:00`);
+}
+
+function extractDateArg(text: string): string | undefined {
+  const parts = text.trim().split(/\s+/);
+  return parts.length > 1 ? parts[1] : undefined;
+}
+
+export async function handleReport(
+  deps: CommandDeps,
+  msg: TelegramMessage,
+): Promise<void> {
+  if (!msg.from || !msg.text) return;
+  const chatId = String(msg.chat.id);
+
+  const ok = await isAuthorized(deps.auth, msg.chat.id, msg.from.id, msg.chat.type);
+  if (!ok) {
+    await sendTelegramMessage(
+      deps.tg,
+      chatId,
+      "Bạn không có quyền sử dụng lệnh này.",
+      { parse_mode: "HTML" },
+    );
+    return;
+  }
+
+  const dateArg = extractDateArg(msg.text);
+  const now = parseReportDate(dateArg, new Date(), deps.config.timezone);
+  if (!now) {
+    await sendTelegramMessage(
+      deps.tg,
+      chatId,
+      "Định dạng ngày không hợp lệ. Hãy dùng <code>/report</code>, <code>/report dd-mm</code> hoặc <code>/report dd-mm-yyyy</code>.",
+      { parse_mode: "HTML" },
+    );
+    return;
+  }
+
+  const projects = await resolveProjectSprintList(deps.env, deps.config, {
+    filterChatId: chatId,
+  });
+
+  if (projects.length === 0) {
+    await sendTelegramMessage(
+      deps.tg,
+      chatId,
+      "Nhóm này chưa đăng ký project nào hoặc không có sprint đang chạy. Hãy dùng /project để đăng ký.",
+      { parse_mode: "HTML" },
+    );
+    return;
+  }
+
+  const win = getWindow(now, deps.config.timezone);
+  const weekdayLabel = new Intl.DateTimeFormat("en-US", {
+    timeZone: deps.config.timezone,
+    weekday: "short",
+  }).format(now);
+  const runDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: deps.config.timezone,
+  }).format(now);
+  const windowLabel = win.label === "weekend" ? "Cuối tuần" : "Hôm qua";
+  const windowDateLabel =
+    win.label === "weekend" ? `${win.sinceLabel} → ${win.untilLabel}` : win.untilLabel;
+
+  logger.info({ chatId, runDate, projects: projects.map((p) => p.key) }, "/report run");
+
+  for (const p of projects) {
+    try {
+      const { digest, burndownPng } = await buildDigest(deps.env, deps.config, p, now);
+      const message = formatDigest({
+        digest,
+        runDate,
+        weekdayLabel,
+        windowLabel,
+        windowDateLabel,
+      });
+      for (const chunk of splitMessage(message)) {
+        await sendTelegramMessage(deps.tg, chatId, chunk);
+      }
+      if (burndownPng) {
+        try {
+          await sendTelegramPhoto(deps.tg, chatId, burndownPng, `burndown-${p.key}.png`);
+        } catch (err) {
+          logger.warn(
+            { project: p.key, chatId, err: (err as Error).message },
+            "burndown photo send failed",
+          );
+        }
+      }
+    } catch (err) {
+      logger.error(
+        { project: p.key, chatId, err: (err as Error).message },
+        "/report build failed",
+      );
+      await sendTelegramMessage(
+        deps.tg,
+        chatId,
+        `Không tạo được report cho <b>${p.key}</b>. Lỗi: ${(err as Error).message}`,
+        { parse_mode: "HTML" },
+      );
+    }
+  }
+}
