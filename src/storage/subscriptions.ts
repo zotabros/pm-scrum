@@ -78,25 +78,50 @@ export function listSubscribed(chatId: string): Set<string> {
   return out;
 }
 
+/**
+ * Exclusive toggle: each chat can subscribe to at most one project.
+ *
+ * - If the chat is already in `projectKey`, unsubscribe.
+ * - Otherwise, remove the chat from every other project and subscribe to `projectKey`.
+ *
+ * Returns `previous` so the UI can describe the transition (e.g. "switched from A to B").
+ */
 export async function toggle(
   projectKey: string,
   chatId: string,
   path = DEFAULT_PATH,
-): Promise<{ subscribed: boolean }> {
+): Promise<{ subscribed: boolean; previous: string | null }> {
   const data = load(path);
-  const current = data.projects[projectKey] ?? [];
-  const idx = current.indexOf(chatId);
-  let subscribed: boolean;
-  if (idx >= 0) {
-    current.splice(idx, 1);
-    subscribed = false;
-  } else {
-    current.push(chatId);
-    subscribed = true;
+  const previous = findChatProject(data, chatId);
+
+  if (previous === projectKey) {
+    data.projects[projectKey] = (data.projects[projectKey] ?? []).filter(
+      (id) => id !== chatId,
+    );
+    await save(data, path);
+    return { subscribed: false, previous };
   }
-  data.projects[projectKey] = current;
+
+  for (const [key, chats] of Object.entries(data.projects)) {
+    data.projects[key] = chats.filter((id) => id !== chatId);
+  }
+  const target = data.projects[projectKey] ?? [];
+  target.push(chatId);
+  data.projects[projectKey] = target;
   await save(data, path);
-  return { subscribed };
+  return { subscribed: true, previous };
+}
+
+function findChatProject(data: SubscriptionsFile, chatId: string): string | null {
+  for (const [key, chats] of Object.entries(data.projects)) {
+    if (chats.includes(chatId)) return key;
+  }
+  return null;
+}
+
+/** Project the chat is currently subscribed to, or null. */
+export function getChatProject(chatId: string): string | null {
+  return findChatProject(load(), chatId);
 }
 
 export function allChats(): Map<string, Set<string>> {

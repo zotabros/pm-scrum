@@ -4,7 +4,7 @@ import {
   sendTelegramPhoto,
   startTypingIndicator,
 } from "../telegram.js";
-import { isAuthorized } from "./auth.js";
+import { isAllowedChat } from "./auth.js";
 import { logger } from "../logger.js";
 import { getWindow } from "../window.js";
 import { formatDigest, splitMessage } from "../format.js";
@@ -73,12 +73,11 @@ export async function handleReport(
   if (!msg.from || !msg.text) return;
   const chatId = String(msg.chat.id);
 
-  const ok = await isAuthorized(deps.auth, msg.chat.id, msg.from.id, msg.chat.type);
-  if (!ok) {
+  if (!isAllowedChat(deps.auth, msg.chat.type, msg.from.id)) {
     await sendTelegramMessage(
       deps.tg,
       chatId,
-      "Bạn không có quyền sử dụng lệnh này.",
+      "Bảo Bảo không hỗ trợ chat riêng. Vui lòng thêm Bảo Bảo vào nhóm để sử dụng.",
       { parse_mode: "HTML" },
     );
     return;

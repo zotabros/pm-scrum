@@ -4,7 +4,7 @@ import {
   editMessageReplyMarkup,
 } from "../telegram.js";
 import { toggle } from "../storage/subscriptions.js";
-import { isAuthorized } from "./auth.js";
+import { isAdmin } from "./auth.js";
 import { buildProjectKeyboard, type CommandDeps } from "./commands.js";
 import { logger } from "../logger.js";
 
@@ -28,16 +28,25 @@ export async function handleProjectToggle(
     return;
   }
 
-  const ok = await isAuthorized(deps.auth, message.chat.id, cb.from.id, message.chat.type);
-  if (!ok) {
-    await answerCallbackQuery(deps.tg, cb.id, "Bạn không có quyền", true);
+  if (!isAdmin(deps.auth, cb.from.id)) {
+    await answerCallbackQuery(
+      deps.tg,
+      cb.id,
+      "Chỉ admin mới được thay đổi đăng ký",
+      true,
+    );
     return;
   }
 
-  const { subscribed } = await toggle(projectKey, chatId);
-  const toast = subscribed
-    ? `Đã đăng ký nhận report ${projectKey}`
-    : `Đã huỷ đăng ký ${projectKey}`;
+  const { subscribed, previous } = await toggle(projectKey, chatId);
+  let toast: string;
+  if (!subscribed) {
+    toast = `Đã huỷ đăng ký ${projectKey}`;
+  } else if (previous && previous !== projectKey) {
+    toast = `Đã chuyển từ ${previous} sang ${projectKey}`;
+  } else {
+    toast = `Đã đăng ký ${projectKey}`;
+  }
   await answerCallbackQuery(deps.tg, cb.id, toast);
   await editMessageReplyMarkup(
     deps.tg,
@@ -45,5 +54,8 @@ export async function handleProjectToggle(
     message.message_id,
     buildProjectKeyboard(deps.config, chatId),
   );
-  logger.info({ chatId, projectKey, subscribed, user: cb.from.id }, "subscription toggled");
+  logger.info(
+    { chatId, projectKey, subscribed, previous, user: cb.from.id },
+    "subscription toggled",
+  );
 }

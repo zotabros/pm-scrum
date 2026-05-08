@@ -4,20 +4,19 @@ import type {
   TelegramMessage,
 } from "../types.js";
 import { sendTelegramMessage, type TelegramOptions } from "../telegram.js";
-import { listSubscribed } from "../storage/subscriptions.js";
-import { isAuthorized, type AuthDeps } from "./auth.js";
+import { getChatProject } from "../storage/subscriptions.js";
+import { isAdmin, isAllowedChat, type AuthDeps } from "./auth.js";
 import { logger } from "../logger.js";
 
 export function buildProjectKeyboard(
   config: Config,
   chatId: string,
 ): InlineKeyboardMarkup {
-  const subs = listSubscribed(chatId);
+  const current = getChatProject(chatId);
   const buttons = config.projects.map((p) => ({
-    text: `${subs.has(p.key) ? "✅" : "⚪"} ${p.key}`,
+    text: `${current === p.key ? "✅" : "⚪"} ${p.key}`,
     callback_data: `proj:${p.key}`,
   }));
-  // 2 columns for compactness
   const rows: InlineKeyboardMarkup["inline_keyboard"] = [];
   for (let i = 0; i < buttons.length; i += 2) {
     rows.push(buttons.slice(i, i + 2));
@@ -32,20 +31,19 @@ export interface CommandDeps {
   env: Env;
 }
 
+const PRIVATE_NOT_SUPPORTED =
+  "Bảo Bảo không hỗ trợ chat riêng. Vui lòng thêm Bảo Bảo vào nhóm để sử dụng.";
+const ADMIN_ONLY =
+  "Tính năng này chỉ dành cho admin được cấu hình trong hệ thống.";
+
 export async function handleProject(
   deps: CommandDeps,
   msg: TelegramMessage,
 ): Promise<void> {
   if (!msg.from) return;
   const chatId = String(msg.chat.id);
-  const ok = await isAuthorized(deps.auth, msg.chat.id, msg.from.id, msg.chat.type);
-  if (!ok) {
-    await sendTelegramMessage(
-      deps.tg,
-      chatId,
-      "Bạn không có quyền sử dụng lệnh này.",
-      { parse_mode: "HTML" },
-    );
+  if (!isAdmin(deps.auth, msg.from.id)) {
+    await sendTelegramMessage(deps.tg, chatId, ADMIN_ONLY, { parse_mode: "HTML" });
     return;
   }
   if (deps.config.projects.length === 0) {
@@ -58,7 +56,7 @@ export async function handleProject(
   await sendTelegramMessage(
     deps.tg,
     chatId,
-    "Chọn project để đăng ký / huỷ đăng ký nhận report cho nhóm này:",
+    "Chọn 1 project để nhận report cho nhóm này (mỗi nhóm chỉ nhận 1 project tại 1 thời điểm). Bấm lại project đang chọn để huỷ.",
     { reply_markup: keyboard, parse_mode: "HTML" },
   );
   logger.info({ chatId, user: msg.from.id }, "/project menu sent");
@@ -68,11 +66,21 @@ export async function handleStart(
   deps: CommandDeps,
   msg: TelegramMessage,
 ): Promise<void> {
+  if (!msg.from) return;
   const chatId = String(msg.chat.id);
-  await sendTelegramMessage(
-    deps.tg,
-    chatId,
-    "Bảo Bảo xin chào.\n• /project — chọn project để nhận report định kỳ cho nhóm này\n• /report [dd-mm|dd-mm-yyyy] — xem report ngay (mặc định: hôm nay)",
-    { parse_mode: "HTML" },
-  );
+  if (!isAllowedChat(deps.auth, msg.chat.type, msg.from.id)) {
+    await sendTelegramMessage(deps.tg, chatId, PRIVATE_NOT_SUPPORTED, {
+      parse_mode: "HTML",
+    });
+    return;
+  }
+  const isUserAdmin = isAdmin(deps.auth, msg.from.id);
+  const lines = [
+    "Bảo Bảo xin chào.",
+    "• /report [dd-mm|dd-mm-yyyy] — xem report ngay cho nhóm này (mặc định: hôm nay)",
+  ];
+  if (isUserAdmin) {
+    lines.push("• /project — (admin) chọn project để nhóm này nhận report định kỳ");
+  }
+  await sendTelegramMessage(deps.tg, chatId, lines.join("\n"), { parse_mode: "HTML" });
 }
