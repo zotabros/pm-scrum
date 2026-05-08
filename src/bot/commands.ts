@@ -90,12 +90,32 @@ export async function handleStart(
     return;
   }
   const isUserAdmin = isAdmin(deps.auth, msg.from.id);
-  const lines = [
-    "Bảo Bảo xin chào.",
-    "• /report [dd-mm|dd-mm-yyyy] — xem report ngay cho nhóm này (mặc định: hôm nay)",
+  const greeting = [
+    "Bảo Bảo xin chào 🌱",
+    "",
+    '"Trưởng thành AGILE" không đến từ công cụ, mà từ thói quen mỗi ngày — nhìn lại, điều chỉnh, tiến tới.',
+    "",
+    "Mình ở đây để giúp bạn hình thành thói quen đó: break task chi tiết, kéo task đều đặn, tập trung sprint goal.",
+    "",
+    "• /report [dd-mm | dd-mm-yyyy] — xem report ngay",
   ];
   if (isUserAdmin) {
-    lines.push("• /project — (admin) chọn project để nhóm này nhận report định kỳ");
+    greeting.push(
+      "• /project — (admin) cấu hình project cho nhóm",
+      "",
+      "Chọn 1 project bên dưới để nhóm này nhận report định kỳ:",
+    );
   }
-  await sendTelegramMessage(deps.tg, chatId, lines.join("\n"), { parse_mode: "HTML" });
+  greeting.push("", "Ship ít hơn, học nhiều hơn 🚀");
+
+  const text = greeting.join("\n");
+  if (isUserAdmin && deps.config.projects.length > 0) {
+    const keyboard = buildProjectKeyboard(deps.config, deps.projectNames, chatId);
+    await sendTelegramMessage(deps.tg, chatId, text, {
+      reply_markup: keyboard,
+      parse_mode: "HTML",
+    });
+  } else {
+    await sendTelegramMessage(deps.tg, chatId, text, { parse_mode: "HTML" });
+  }
 }
