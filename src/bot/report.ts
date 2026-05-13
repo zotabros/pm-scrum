@@ -148,7 +148,12 @@ export async function handleReport(
   for (const p of projects) {
     const stopTyping = startTypingIndicator(deps.tg, chatId, "typing");
     try {
-      const { digest, burndownPng } = await buildDigest(deps.env, deps.config, p, now);
+      const { digest, burndownPng, burndownCaption } = await buildDigest(
+        deps.env,
+        deps.config,
+        p,
+        now,
+      );
       const message = formatDigest({
         digest,
         runDate,
@@ -162,7 +167,13 @@ export async function handleReport(
       if (burndownPng) {
         const stopUploading = startTypingIndicator(deps.tg, chatId, "upload_photo");
         try {
-          await sendTelegramPhoto(deps.tg, chatId, burndownPng, `burndown-${p.key}.png`);
+          await sendTelegramPhoto(
+            deps.tg,
+            chatId,
+            burndownPng,
+            `burndown-${p.key}.png`,
+            { caption: burndownCaption ?? undefined, parse_mode: "HTML" },
+          );
         } catch (err) {
           logger.warn(
             { project: p.key, chatId, err: (err as Error).message },
