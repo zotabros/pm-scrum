@@ -9,7 +9,8 @@ import { logger } from "../logger.js";
 import { getWindow } from "../window.js";
 import { formatDigest, splitMessage } from "../format.js";
 import { buildDigest, resolveProjectSprintList } from "../digest.js";
-import type { CommandDeps } from "./commands.js";
+import { getChatProject } from "../storage/subscriptions.js";
+import { displayName, type CommandDeps } from "./commands.js";
 
 const DATE_RE = /^(\d{1,2})-(\d{1,2})(?:-(\d{4}))?$/;
 
@@ -95,16 +96,28 @@ export async function handleReport(
     return;
   }
 
+  const subscribedKey = getChatProject(chatId);
+  if (!subscribedKey) {
+    await sendTelegramMessage(
+      deps.tg,
+      chatId,
+      "Nhóm này chưa đăng ký project nào. Hãy dùng /project để đăng ký.",
+      { parse_mode: "HTML" },
+    );
+    return;
+  }
+
   const projects = await resolveProjectSprintList(deps.env, deps.config, {
     filterChatId: chatId,
     projectNames: deps.projectNames,
   });
 
   if (projects.length === 0) {
+    const projectLabel = displayName(deps.config, deps.projectNames, subscribedKey);
     await sendTelegramMessage(
       deps.tg,
       chatId,
-      "Nhóm này chưa đăng ký project nào hoặc không có sprint đang chạy. Hãy dùng /project để đăng ký.",
+      `Dự án <b>${projectLabel}</b> hiện không có sprint nào đang chạy trên Jira. Hãy kiểm tra trạng thái sprint hoặc dùng /project để đổi sang dự án khác.`,
       { parse_mode: "HTML" },
     );
     return;
