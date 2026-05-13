@@ -76,7 +76,12 @@ async function main(): Promise<void> {
   let successCount = 0;
   for (const p of projects) {
     try {
-      const { digest, burndownPng } = await buildDigest(env, config, p, now);
+      const { digest, burndownPng, burndownCaption } = await buildDigest(
+        env,
+        config,
+        p,
+        now,
+      );
       const message = formatDigest({
         digest,
         runDate,
@@ -90,6 +95,7 @@ async function main(): Promise<void> {
         );
         if (burndownPng) {
           process.stdout.write(`[burndown png: ${burndownPng.byteLength} bytes]\n`);
+          if (burndownCaption) process.stdout.write(`[caption] ${burndownCaption}\n`);
         }
       } else {
         for (const chatId of p.chatIds) {
@@ -104,6 +110,7 @@ async function main(): Promise<void> {
                   chatId,
                   burndownPng,
                   `burndown-${p.key}.png`,
+                  { caption: burndownCaption ?? undefined, parse_mode: "HTML" },
                 );
               } catch (err) {
                 logger.warn(

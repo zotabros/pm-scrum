@@ -23,7 +23,32 @@ import { computeLeaderboard } from "./format.js";
 import { safeBuildBurndownPng } from "./burndown.js";
 import { sprintHealthNote } from "./llm.js";
 import { getChats, listSubscribed } from "./storage/subscriptions.js";
-import type { JiraSprint, ProjectDigest } from "./types.js";
+import type { JiraIssue, JiraSprint, ProjectDigest } from "./types.js";
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function buildBurndownCaption(leafIssues: JiraIssue[], now: Date): string {
+  const unfinished = leafIssues.filter((i) => {
+    const res = i.fields.resolutiondate;
+    if (!res) return true;
+    const t = new Date(res).getTime();
+    return !Number.isFinite(t) || t > now.getTime();
+  });
+  if (unfinished.length === 0) {
+    return "📊 <b>Đã hoàn thành toàn bộ task của sprint.</b>";
+  }
+  const counts = new Map<string, number>();
+  for (const i of unfinished) {
+    const type = i.fields.issuetype?.name?.trim() || "Khác";
+    counts.set(type, (counts.get(type) ?? 0) + 1);
+  }
+  const parts = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([type, n]) => `${n} x ${escapeHtml(type)}`);
+  return `📊 <b>Còn lại: ${unfinished.length} task</b>\n${parts.join(" • ")}`;
+}
 
 export interface ResolvedProject {
   key: string;
@@ -103,7 +128,11 @@ export async function buildDigest(
   config: Config,
   project: ResolvedProject,
   now: Date,
-): Promise<{ digest: ProjectDigest; burndownPng: Buffer | null }> {
+): Promise<{
+  digest: ProjectDigest;
+  burndownPng: Buffer | null;
+  burndownCaption: string | null;
+}> {
   const client = createJiraClient(resolveJiraCreds(env, project.jiraInstance));
   const win = getWindow(now, config.timezone);
   const statusMeta = await loadStatusCategoryMap(client);
@@ -207,5 +236,7 @@ export async function buildDigest(
     burndownTitle,
   );
 
-  return { digest, burndownPng };
+  const burndownCaption = burndownPng ? buildBurndownCaption(leafIssues, now) : null;
+
+  return { digest, burndownPng, burndownCaption };
 }

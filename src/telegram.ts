@@ -69,6 +69,7 @@ export async function sendTelegramPhoto(
   chatId: string,
   photo: Buffer,
   filename = "burndown.png",
+  extra: { caption?: string; parse_mode?: "HTML" | "MarkdownV2" } = {},
 ): Promise<void> {
   const url = `https://api.telegram.org/bot${opts.botToken}/sendPhoto`;
   let attempt = 0;
@@ -81,6 +82,10 @@ export async function sendTelegramPhoto(
       new Blob([new Uint8Array(photo)], { type: "image/png" }),
       filename,
     );
+    if (extra.caption) {
+      form.append("caption", extra.caption);
+      if (extra.parse_mode) form.append("parse_mode", extra.parse_mode);
+    }
     try {
       await axios.post(url, form, { timeout: 30_000 });
       return;
