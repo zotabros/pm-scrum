@@ -20,6 +20,8 @@ const ConfigSchema = z.object({
       enabled: z.boolean().default(false),
       model: z.string().default("claude-haiku-4-5-20251001"),
       language: z.string().default("vi"),
+      base_url: z.string().url().optional(),
+      api_key: z.string().min(1).optional(),
     })
     .default({ enabled: false, model: "claude-haiku-4-5-20251001", language: "vi" }),
   hours_calculation: z

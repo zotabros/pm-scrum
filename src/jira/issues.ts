@@ -9,6 +9,7 @@ const FIELDS = [
   "duedate",
   "issuetype",
   "updated",
+  "created",
   "resolutiondate",
   "labels",
   "subtasks",
