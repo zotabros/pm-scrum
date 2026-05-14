@@ -104,25 +104,31 @@ export function computeBurndown(
   if (days.length === 0) return [];
 
   const total = leafIssues.length;
-  const totalDays = days.length;
+  const N = days.length;
+  const sprintStartMs = new Date(sprint.startDate).getTime();
+  const nowMs = now.getTime();
   const points: BurndownPoint[] = [];
-  const todayIdx = days.findIndex((d) => d.key === todayKey);
 
-  for (let i = 0; i < days.length; i++) {
+  points.push({
+    label: "Bắt đầu",
+    ideal: total,
+    actual: sprintStartMs <= nowMs ? total : null,
+  });
+
+  for (let i = 0; i < N; i++) {
     const day = days[i]!;
-    const ideal = total - (total * (i + 1)) / totalDays;
+    const ideal = total - (total * (i + 1)) / N;
     const eod = tzInstant(day.y, day.m, day.d, 24, 0, timezone).getTime();
-    const cutoff = day.key === todayKey ? Math.min(now.getTime(), eod) : eod;
+    const isToday = day.key === todayKey;
 
     let actual: number | null = null;
-    const isPast = todayIdx === -1 ? eod <= now.getTime() : i <= todayIdx;
-    if (isPast) {
+    if (!isToday && eod <= nowMs) {
       let doneCount = 0;
       for (const issue of leafIssues) {
         const res = issue.fields.resolutiondate;
         if (!res) continue;
         const t = new Date(res).getTime();
-        if (Number.isFinite(t) && t <= cutoff) doneCount += 1;
+        if (Number.isFinite(t) && t <= eod) doneCount += 1;
       }
       actual = total - doneCount;
     }
@@ -171,7 +177,11 @@ export async function renderBurndownPng(
       scales: {
         yAxes: [
           {
-            ticks: { beginAtZero: true, precision: 0 },
+            ticks: {
+              beginAtZero: true,
+              precision: 0,
+              max: points[0]?.ideal,
+            },
             scaleLabel: { display: true, labelString: "Tasks remaining" },
           },
         ],
