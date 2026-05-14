@@ -1,7 +1,7 @@
 import type { Config, Env } from "./config.js";
 import { resolveJiraCreds } from "./config.js";
 import { logger } from "./logger.js";
-import { getWindow } from "./window.js";
+import { getWindow, startOfDayInTz } from "./window.js";
 import { createJiraClient } from "./jira/client.js";
 import {
   findActiveSprintForProject,
@@ -9,7 +9,7 @@ import {
 } from "./jira/discover.js";
 import { searchJql } from "./jira/issues.js";
 import {
-  bucketSprintIssues,
+  bucketSprintIssuesAt,
   detectWorkingSaturdays,
   enrichInProgressHours,
   expandSprintIssuesWithSubtasks,
@@ -139,12 +139,16 @@ export async function buildDigest(
 
   const sprintIssues = await searchJql(client, `sprint = ${project.sprint.id}`);
   const expandedIssues = await expandSprintIssuesWithSubtasks(client, sprintIssues);
-  const buckets = bucketSprintIssues(expandedIssues);
 
   const leafKeys = expandedIssues
     .filter((i) => !(i.fields.subtasks && i.fields.subtasks.length > 0))
     .map((i) => i.key);
   const changelogCache = await prefetchChangelogs(client, leafKeys);
+
+  // Snapshot cutoff: state as of 00:00 of `now`'s local day. Excludes today's
+  // changes so a brief/report for date D reflects end-of-(D-1) state.
+  const asOf = startOfDayInTz(now, config.timezone);
+  const buckets = bucketSprintIssuesAt(expandedIssues, statusMeta, changelogCache, asOf);
   const workingSaturdays = detectWorkingSaturdays(
     changelogCache.values(),
     config.timezone,
@@ -170,7 +174,7 @@ export async function buildDigest(
     client,
     buckets.inProgress,
     statusMeta,
-    now,
+    asOf,
     config.timezone,
     workingSaturdays,
     changelogCache,
@@ -179,10 +183,11 @@ export async function buildDigest(
     client,
     expandedIssues,
     statusMeta,
-    win.until,
+    asOf,
     config.timezone,
     workingSaturdays,
     changelogCache,
+    asOf,
   );
 
   const { day, total } = sprintDayInfo(project.sprint, now);
@@ -202,21 +207,24 @@ export async function buildDigest(
     completedInWindow: completed,
     todo: buckets.todo,
     inProgress: buckets.inProgress,
+    doneAll: leaderboardTasks,
     leaderboard: computeLeaderboard(leaderboardTasks),
     windowSince: win.since,
     windowUntil: win.until,
     timezone: config.timezone,
   };
 
-  if (config.llm.enabled && env.ANTHROPIC_API_KEY) {
+  const apiKey = config.llm.api_key ?? env.ANTHROPIC_API_KEY;
+  if (config.llm.enabled && apiKey) {
     const runDate = new Intl.DateTimeFormat("en-CA", {
       timeZone: config.timezone,
     }).format(now);
     digest.llmNote = await sprintHealthNote(
       {
-        apiKey: env.ANTHROPIC_API_KEY,
+        apiKey,
         model: config.llm.model,
         language: config.llm.language,
+        baseUrl: config.llm.base_url,
       },
       digest,
       runDate,

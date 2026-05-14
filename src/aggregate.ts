@@ -89,6 +89,8 @@ function toTask(
     hoursInProgress: hours ?? null,
     inProgressSince: inProgressSince?.toISOString() ?? null,
     subtaskProgress: computeSubtaskProgress(issue),
+    issueType: issue.fields.issuetype?.name,
+    createdAt: issue.fields.created ?? null,
   };
 }
 
@@ -323,11 +325,14 @@ export async function fetchCompletedInWindow(
 ): Promise<SprintDigestTask[]> {
   const candidates = expandedIssues.filter((i) => {
     if (hasSubtasks(i)) return false;
-    if (i.fields.status.statusCategory.key !== "done") return false;
     const rd = i.fields.resolutiondate;
     if (!rd) return false;
     const at = new Date(rd);
-    return at >= since && at <= until;
+    if (!(at >= since && at <= until)) return false;
+    // Always sanity-check via status category (current). A task with a
+    // resolutiondate but currently re-opened can be filtered out cheaply.
+    if (i.fields.status.statusCategory.key !== "done") return false;
+    return true;
   });
 
   const tasks: SprintDigestTask[] = [];
@@ -401,10 +406,26 @@ export async function fetchSprintLeaderboardTasks(
   timezone: string,
   workingSaturdays: Set<string> = new Set(),
   changelogCache?: Map<string, JiraChangelogEntry[]>,
+  asOf?: Date,
 ): Promise<SprintDigestTask[]> {
-  const candidates = expandedIssues.filter(
-    (i) => !hasSubtasks(i) && i.fields.status.statusCategory.key === "done",
-  );
+  const candidates = expandedIssues.filter((i) => {
+    if (hasSubtasks(i)) return false;
+    if (asOf) {
+      const rd = i.fields.resolutiondate
+        ? new Date(i.fields.resolutiondate).getTime()
+        : null;
+      if (rd === null || rd > asOf.getTime()) return false;
+      const createdAt = i.fields.created ? new Date(i.fields.created) : null;
+      const histStatus = statusAt(
+        changelogCache?.get(i.key) ?? [],
+        i.fields.status.name,
+        createdAt,
+        asOf,
+      );
+      return histStatus !== null && categoryFor(histStatus, statusMeta) === "done";
+    }
+    return i.fields.status.statusCategory.key === "done";
+  });
 
   const out: SprintDigestTask[] = [];
   for (const issue of candidates) {
@@ -437,6 +458,106 @@ export interface SprintBuckets {
   todo: SprintDigestTask[];
   inProgress: SprintDigestTask[];
   done: SprintDigestTask[];
+}
+
+/**
+ * Reconstruct an issue's status name as of `asOf`, using its changelog.
+ * Returns `null` if the issue was created strictly after `asOf` (didn't exist yet).
+ *
+ * Algorithm: sort status transitions by time. Walk forward; the last
+ * transition whose `created < asOf` gives the historical status (`toString`).
+ * If no transitions occurred before `asOf`, the status equals the `fromString`
+ * of the earliest transition (= original status). If there are no status
+ * transitions at all, the issue has been in `currentStatus` since creation.
+ */
+export function statusAt(
+  changelog: JiraChangelogEntry[],
+  currentStatus: string,
+  createdAt: Date | null,
+  asOf: Date,
+): string | null {
+  if (createdAt && createdAt.getTime() > asOf.getTime()) return null;
+  const transitions = changelog
+    .flatMap((h) =>
+      h.items
+        .filter((i) => i.field === "status")
+        .map((i) => ({
+          at: new Date(h.created),
+          from: i.fromString,
+          to: i.toString,
+        })),
+    )
+    .sort((a, b) => a.at.getTime() - b.at.getTime());
+  if (transitions.length === 0) return currentStatus;
+  let last: { from: string | null; to: string | null } | null = null;
+  for (const t of transitions) {
+    if (t.at.getTime() < asOf.getTime()) last = t;
+    else break;
+  }
+  if (last) return last.to ?? currentStatus;
+  return transitions[0]!.from ?? currentStatus;
+}
+
+function categoryFor(
+  statusName: string,
+  statusMeta: Map<string, StatusMeta>,
+): "new" | "indeterminate" | "done" {
+  return statusMeta.get(statusName)?.category ?? "new";
+}
+
+/**
+ * Snapshot version of bucketSprintIssues: uses the changelog cache to figure
+ * out each issue's status category as of `asOf`, instead of trusting the
+ * current `fields.status`. Issues created after `asOf` are dropped entirely.
+ */
+export function bucketSprintIssuesAt(
+  issues: JiraIssue[],
+  statusMeta: Map<string, StatusMeta>,
+  changelogCache: Map<string, JiraChangelogEntry[]>,
+  asOf: Date,
+): SprintBuckets {
+  const todo: SprintDigestTask[] = [];
+  const inProgress: SprintDigestTask[] = [];
+  const done: SprintDigestTask[] = [];
+
+  for (const issue of issues) {
+    if (hasSubtasks(issue)) continue;
+    const createdAt = issue.fields.created ? new Date(issue.fields.created) : null;
+    const histStatus = statusAt(
+      changelogCache.get(issue.key) ?? [],
+      issue.fields.status.name,
+      createdAt,
+      asOf,
+    );
+    if (histStatus === null) continue;
+    const cat = categoryFor(histStatus, statusMeta);
+    const task = toTask(issue);
+    task.status = histStatus;
+    if (cat === "done") {
+      const rd = issue.fields.resolutiondate
+        ? new Date(issue.fields.resolutiondate).getTime()
+        : null;
+      // Only count as done if resolutiondate is also before asOf. A task can
+      // currently have "Done" status name but with no resolution captured
+      // before asOf (e.g. status name reused). Be conservative: require rd < asOf.
+      if (rd !== null && rd <= asOf.getTime()) done.push(task);
+      else inProgress.push(task); // treat as still active at asOf
+    } else if (cat === "indeterminate") {
+      inProgress.push(task);
+    } else {
+      todo.push(task);
+    }
+  }
+
+  const labelKey = (t: SprintDigestTask) => (t.labels[0] ?? "").toLowerCase();
+  const sorter = (a: SprintDigestTask, b: SprintDigestTask) =>
+    Number(b.blocked) - Number(a.blocked) ||
+    labelKey(a).localeCompare(labelKey(b)) ||
+    a.key.localeCompare(b.key);
+  todo.sort(sorter);
+  inProgress.sort(sorter);
+
+  return { todo, inProgress, done };
 }
 
 export function bucketSprintIssues(issues: JiraIssue[]): SprintBuckets {

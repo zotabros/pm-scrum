@@ -27,6 +27,7 @@ export interface JiraIssueFields {
   duedate?: string | null;
   issuetype?: { name: string; subtask?: boolean };
   updated?: string;
+  created?: string;
   resolutiondate?: string | null;
   labels?: string[];
   subtasks?: JiraSubtask[];
@@ -88,10 +89,13 @@ export interface SprintDigestTask {
   hoursInProgress?: number | null;
   inProgressSince?: string | null;
   subtaskProgress?: { done: number; total: number } | null;
+  issueType?: string;
+  createdAt?: string | null;
 }
 
 export interface LeaderboardEntry {
   name: string;
+  role?: string | null;
   hours: number;
   tasks: number;
   hasHours: boolean;
@@ -107,11 +111,13 @@ export interface ProjectDigest {
   completedInWindow: SprintDigestTask[];
   todo: SprintDigestTask[];
   inProgress: SprintDigestTask[];
+  doneAll: SprintDigestTask[];
   leaderboard: LeaderboardEntry[];
   windowSince: Date;
   windowUntil: Date;
   timezone: string;
   llmNote?: string | null;
+  briefNotes?: { items: string[] } | null;
 }
 
 export interface TelegramUser {

@@ -6,9 +6,20 @@ import {
 } from "../telegram.js";
 import { isAllowedChat } from "./auth.js";
 import { logger } from "../logger.js";
-import { getWindow } from "../window.js";
-import { formatDigest, splitMessage } from "../format.js";
+import { getWindow, startOfDayInTz } from "../window.js";
+import {
+  computeBugStats,
+  computeBurnRate,
+  computeSprintEndCountdown,
+  computeStuckTasks,
+  computeUnassignedCount,
+  formatCompletedSection,
+  formatDailyBrief,
+  formatLlmInsight,
+  splitMessage,
+} from "../format.js";
 import { buildDigest, resolveProjectSprintList } from "../digest.js";
+import { dailyBriefNotes } from "../llm.js";
 import { getChatProject } from "../storage/subscriptions.js";
 import { displayName, type CommandDeps } from "./commands.js";
 
@@ -162,6 +173,150 @@ export async function handleChart(
   }
 }
 
+export async function handleBrief(
+  deps: CommandDeps,
+  msg: TelegramMessage,
+): Promise<void> {
+  if (!msg.from || !msg.text) return;
+  const chatId = String(msg.chat.id);
+
+  if (!isAllowedChat(deps.auth, msg.chat.type, msg.from.id)) {
+    await sendTelegramMessage(
+      deps.tg,
+      chatId,
+      "Bảo Bảo không hỗ trợ chat riêng. Vui lòng thêm Bảo Bảo vào nhóm để sử dụng.",
+      { parse_mode: "HTML" },
+    );
+    return;
+  }
+
+  const dateArg = extractDateArg(msg.text);
+  const now = parseReportDate(dateArg, new Date(), deps.config.timezone);
+  if (!now) {
+    await sendTelegramMessage(
+      deps.tg,
+      chatId,
+      "Định dạng ngày không hợp lệ. Hãy dùng <code>/brief</code>, <code>/brief dd-mm</code> hoặc <code>/brief dd-mm-yyyy</code>.",
+      { parse_mode: "HTML" },
+    );
+    return;
+  }
+
+  const subscribedKey = getChatProject(chatId);
+  if (!subscribedKey) {
+    await sendTelegramMessage(
+      deps.tg,
+      chatId,
+      "Nhóm này chưa đăng ký project nào. Hãy dùng /project để đăng ký.",
+      { parse_mode: "HTML" },
+    );
+    return;
+  }
+
+  const projects = await resolveProjectSprintList(deps.env, deps.config, {
+    filterChatId: chatId,
+    projectNames: deps.projectNames,
+  });
+
+  if (projects.length === 0) {
+    const projectLabel = displayName(deps.config, deps.projectNames, subscribedKey);
+    await sendTelegramMessage(
+      deps.tg,
+      chatId,
+      `Dự án <b>${projectLabel}</b> hiện không có sprint nào đang chạy trên Jira. Hãy kiểm tra trạng thái sprint hoặc dùng /project để đổi sang dự án khác.`,
+      { parse_mode: "HTML" },
+    );
+    return;
+  }
+
+  const apiKey = deps.config.llm.api_key ?? deps.env.ANTHROPIC_API_KEY;
+  if (!deps.config.llm.enabled || !apiKey) {
+    await sendTelegramMessage(
+      deps.tg,
+      chatId,
+      "LLM chưa được bật, không tạo được brief. Liên hệ admin để bật <code>llm.enabled</code> trong config.",
+      { parse_mode: "HTML" },
+    );
+    return;
+  }
+
+  const runDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: deps.config.timezone,
+  }).format(now);
+
+  logger.info({ chatId, runDate, projects: projects.map((p) => p.key) }, "/brief run");
+
+  const projectsLabel = projects.map((p) => `<b>${p.projectName}</b>`).join(", ");
+  await sendTelegramMessage(
+    deps.tg,
+    chatId,
+    `Bảo Bảo đang tạo Daily Brief cho dự án ${projectsLabel}. Chờ Bảo Bảo xíu nhé...`,
+    { parse_mode: "HTML" },
+  );
+
+  for (const p of projects) {
+    const stopTyping = startTypingIndicator(deps.tg, chatId, "typing");
+    try {
+      const { digest } = await buildDigest(deps.env, deps.config, p, now);
+      const asOf = startOfDayInTz(now, deps.config.timezone);
+      const countdown = computeSprintEndCountdown(digest.sprint, now, deps.config.timezone);
+      const stuck = computeStuckTasks(digest, asOf);
+
+      digest.briefNotes = await dailyBriefNotes(
+        {
+          apiKey,
+          model: deps.config.llm.model,
+          language: deps.config.llm.language,
+          baseUrl: deps.config.llm.base_url,
+        },
+        digest,
+        runDate,
+        {
+          unassignedCount: computeUnassignedCount(digest),
+          sprintEndCountdown: countdown?.label ?? "không có endDate",
+          topPerformers: digest.leaderboard.slice(0, 5),
+          stuckTasks: stuck.map((s) => ({
+            key: s.task.key,
+            summary: s.task.summary,
+            owner: s.owner,
+            ownerRole: s.ownerRole,
+            days: s.days,
+          })),
+          burnRate: computeBurnRate(digest),
+          bugStats: computeBugStats(digest),
+        },
+      );
+
+      const insight = formatLlmInsight(digest.briefNotes);
+      if (insight) {
+        for (const chunk of splitMessage(insight)) {
+          await sendTelegramMessage(deps.tg, chatId, chunk);
+        }
+      } else {
+        await sendTelegramMessage(
+          deps.tg,
+          chatId,
+          `Không tạo được brief cho <b>${p.projectName}</b> (LLM trả lỗi).`,
+          { parse_mode: "HTML" },
+        );
+      }
+    } catch (err) {
+      logger.error(
+        { project: p.key, chatId, err: (err as Error).message },
+        "/brief build failed",
+      );
+      await sendTelegramMessage(
+        deps.tg,
+        chatId,
+        `Không tạo được brief cho <b>${p.key}</b>. Lỗi: ${(err as Error).message}`,
+        { parse_mode: "HTML" },
+      );
+    } finally {
+      stopTyping();
+    }
+  }
+}
+
 export async function handleReport(
   deps: CommandDeps,
   msg: TelegramMessage,
@@ -219,10 +374,6 @@ export async function handleReport(
   }
 
   const win = getWindow(now, deps.config.timezone);
-  const weekdayLabel = new Intl.DateTimeFormat("en-US", {
-    timeZone: deps.config.timezone,
-    weekday: "short",
-  }).format(now);
   const runDate = new Intl.DateTimeFormat("en-CA", {
     timeZone: deps.config.timezone,
   }).format(now);
@@ -249,16 +400,53 @@ export async function handleReport(
         p,
         now,
       );
-      const message = formatDigest({
+
+      // Optional LLM insight
+      const apiKey = deps.config.llm.api_key ?? deps.env.ANTHROPIC_API_KEY;
+      if (deps.config.llm.enabled && apiKey) {
+        const asOf = startOfDayInTz(now, deps.config.timezone);
+        const countdown = computeSprintEndCountdown(digest.sprint, now, deps.config.timezone);
+        const stuck = computeStuckTasks(digest, asOf);
+        digest.briefNotes = await dailyBriefNotes(
+          {
+            apiKey,
+            model: deps.config.llm.model,
+            language: deps.config.llm.language,
+            baseUrl: deps.config.llm.base_url,
+          },
+          digest,
+          runDate,
+          {
+            unassignedCount: computeUnassignedCount(digest),
+            sprintEndCountdown: countdown?.label ?? "không có endDate",
+            topPerformers: digest.leaderboard.slice(0, 5),
+            stuckTasks: stuck.map((s) => ({
+              key: s.task.key,
+              summary: s.task.summary,
+              owner: s.owner,
+              ownerRole: s.ownerRole,
+              days: s.days,
+            })),
+            burnRate: computeBurnRate(digest),
+            bugStats: computeBugStats(digest),
+          },
+        );
+      }
+
+      // Message 1: brief + Đã hoàn thành
+      const brief = formatDailyBrief({
         digest,
         runDate,
-        weekdayLabel,
-        windowLabel,
-        windowDateLabel,
+        now,
+        timezone: deps.config.timezone,
       });
-      for (const chunk of splitMessage(message)) {
+      const completed = formatCompletedSection(digest, windowLabel, windowDateLabel);
+      const msg1 = completed ? `${brief}\n\n${completed}` : brief;
+      for (const chunk of splitMessage(msg1)) {
         await sendTelegramMessage(deps.tg, chatId, chunk);
       }
+
+      // Message 2: burndown photo
       if (burndownPng) {
         const stopUploading = startTypingIndicator(deps.tg, chatId, "upload_photo");
         try {
@@ -276,6 +464,14 @@ export async function handleReport(
           );
         } finally {
           stopUploading();
+        }
+      }
+
+      // Message 3: LLM insight
+      const insight = formatLlmInsight(digest.briefNotes);
+      if (insight) {
+        for (const chunk of splitMessage(insight)) {
+          await sendTelegramMessage(deps.tg, chatId, chunk);
         }
       }
     } catch (err) {
