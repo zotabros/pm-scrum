@@ -296,19 +296,29 @@ export function computeInProgressMetrics(
  * Fetch changelogs for the given issue keys (with cache). Allows callers to
  * reuse the same changelog data across detection + per-task hour computation.
  */
+const CHANGELOG_CONCURRENCY = 10;
+
 export async function prefetchChangelogs(
   client: AxiosInstance,
   keys: string[],
   cache: Map<string, JiraChangelogEntry[]> = new Map(),
 ): Promise<Map<string, JiraChangelogEntry[]>> {
-  for (const key of keys) {
-    if (cache.has(key)) continue;
-    try {
-      cache.set(key, await getIssueChangelog(client, key));
-    } catch (err) {
-      logger.warn({ key, err: (err as Error).message }, "changelog prefetch failed");
-      cache.set(key, []);
-    }
+  const todo = keys.filter((k) => !cache.has(k));
+  for (let i = 0; i < todo.length; i += CHANGELOG_CONCURRENCY) {
+    const chunk = todo.slice(i, i + CHANGELOG_CONCURRENCY);
+    await Promise.all(
+      chunk.map(async (key) => {
+        try {
+          cache.set(key, await getIssueChangelog(client, key));
+        } catch (err) {
+          logger.warn(
+            { key, err: (err as Error).message },
+            "changelog prefetch failed",
+          );
+          cache.set(key, []);
+        }
+      }),
+    );
   }
   return cache;
 }

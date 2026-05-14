@@ -153,7 +153,7 @@ export interface DailyBriefContext {
   } | null;
 }
 
-function clampList(items: unknown, maxItems: number, maxLen = 800): string[] {
+function clampList(items: unknown, maxItems: number, maxLen = 350): string[] {
   if (!Array.isArray(items)) return [];
   return items
     .filter((s): s is string => typeof s === "string")
@@ -234,6 +234,7 @@ Yêu cầu output JSON đúng format (không thêm chữ nào ngoài JSON):
 
 Cách viết:
 - "items" (3-6 mục): mỗi mục VỪA là một nhận định / phát hiện cảnh báo (insight), VỪA kèm hành động cụ thể cần làm trong Daily hôm nay. Không tách riêng phần phân tích và phần hành động. Một mục = một chủ đề trọn vẹn.
+- ĐỘ DÀI: mỗi item TỐI ĐA 280 ký tự. Viết cô đọng — bỏ từ thừa, bỏ ví dụ không cần, đi thẳng vào vấn đề. Một câu chính kèm 1 câu hành động ngắn.
 - Mỗi mục bắt đầu bằng 1 trong các emoji: 📊 (đánh giá tổng thể tốc độ/dự báo), 🚨 (rủi ro cao cần xử ngay), ⚠️ (cảnh báo bug / chất lượng), ❓ (cần hỏi rõ trong daily), ⚡️ (thúc đẩy hoàn thành), 🎯 (nhắc lại Sprint Goal nếu cần re-prioritize).
 - ƯU TIÊN nội dung:
   1. 📊 Mục đầu tiên BẮT BUỘC: đánh giá tốc độ — so tốc độ hiện tại với tốc độ cần, dự báo bằng con số cụ thể (done bao nhiêu / tổng, thiếu mấy task). Nói rõ on-track / at-risk / behind và đề xuất hành động (giảm scope, tăng tốc, dồn lực vào task nào…).
@@ -246,7 +247,8 @@ Cách viết:
 
 Phong cách:
 - Viết tiếng Việt tự nhiên. Hạn chế tối đa tiếng Anh; chỉ dùng các từ đã quen thuộc với dev Việt: sprint, daily, demo, deadline, bug, deploy, API. Tránh: "bottleneck", "rebalance", "escalate", "decompose", "pickup", "blocker", "pace", "rhythm", "miss", "stuck", "todo", "resource", "review" — hãy thay bằng từ thuần Việt ("nghẽn", "phân lại việc", "đẩy lên cấp trên", "chia nhỏ", "nhận thêm", "vướng mắc", "tốc độ", "trễ", "kẹt", "chưa bắt đầu", "nhân lực", "xem lại").
-- Không markdown (không **, _, \`, []).
+- ĐƯỢC PHÉP dùng **bold** (hai dấu sao) để nhấn các keyword quan trọng: tên người, mã task (WL-999), con số quan trọng (12 task, 7 ngày), trạng thái cảnh báo (at-risk, behind). Mỗi mục KHÔNG NÊN có quá 3-4 cụm bold để giữ sự nổi bật.
+- KHÔNG dùng các markdown khác (_, \`, [], #).
 - Tập trung vào hành động cụ thể, không nói chung chung kiểu "cần ưu tiên hoá công việc".
 `;
 

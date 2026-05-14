@@ -7,6 +7,26 @@ export function escapeMd(text: string): string {
   return text.replace(MDV2_SPECIAL, (c) => `\\${c}`);
 }
 
+/**
+ * Escape MarkdownV2 special chars but preserve `**bold**` segments by
+ * converting them to Telegram's single-asterisk bold form. Used for LLM
+ * output where we want keyword highlights without letting LLM produce
+ * arbitrary markdown.
+ */
+export function escapeMdWithBold(text: string): string {
+  const out: string[] = [];
+  const re = /\*\*([^*\n]+)\*\*/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    out.push(escapeMd(text.slice(last, m.index)));
+    out.push("*" + escapeMd(m[1]!) + "*");
+    last = m.index + m[0].length;
+  }
+  out.push(escapeMd(text.slice(last)));
+  return out.join("");
+}
+
 const NO_LABEL = "Không gắn label";
 const NO_LABEL_COMPLETED = "Người hùng thầm lặng";
 const TEAM_PREFIX_RE = /^(be|fe|qa|qc|dev|ba|pm|po|sm)-/i;
@@ -557,10 +577,9 @@ export function formatLlmInsight(
   notes: { items: string[] } | null | undefined,
 ): string {
   if (!notes || notes.items.length === 0) return "";
-  return [
-    `🎯 *ĐIỂM CẦN QUAN TÂM*`,
-    ...notes.items.map((s) => escapeMd(s)),
-  ].join("\n");
+  const header = `🎯 *ĐIỂM CẦN QUAN TÂM*`;
+  const body = notes.items.map((s) => escapeMdWithBold(s)).join("\n\n");
+  return `${header}\n\n${body}`;
 }
 
 /** Standalone ✅ Đã hoàn thành section, extracted from former formatDigest logic. */
