@@ -153,14 +153,13 @@ export interface DailyBriefContext {
   } | null;
 }
 
-function clampList(items: unknown, maxItems: number, maxLen = 350): string[] {
+function clampList(items: unknown, maxItems: number): string[] {
   if (!Array.isArray(items)) return [];
   return items
     .filter((s): s is string => typeof s === "string")
     .map((s) => s.trim())
     .filter((s) => s.length > 0)
-    .slice(0, maxItems)
-    .map((s) => (s.length > maxLen ? s.slice(0, maxLen) : s));
+    .slice(0, maxItems);
 }
 
 export async function dailyBriefNotes(
