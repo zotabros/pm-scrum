@@ -251,7 +251,7 @@ Phong cách:
 `;
 
   try {
-    const raw = await callChat(opts, prompt, 800);
+    const raw = await callChat(opts, prompt, 3000);
     const jsonStart = raw.indexOf("{");
     const jsonEnd = raw.lastIndexOf("}");
     if (jsonStart < 0 || jsonEnd <= jsonStart) {
