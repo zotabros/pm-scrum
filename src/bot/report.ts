@@ -67,6 +67,101 @@ function extractDateArg(text: string): string | undefined {
   return parts.length > 1 ? parts[1] : undefined;
 }
 
+export async function handleChart(
+  deps: CommandDeps,
+  msg: TelegramMessage,
+): Promise<void> {
+  if (!msg.from || !msg.text) return;
+  const chatId = String(msg.chat.id);
+
+  if (!isAllowedChat(deps.auth, msg.chat.type, msg.from.id)) {
+    await sendTelegramMessage(
+      deps.tg,
+      chatId,
+      "Bảo Bảo không hỗ trợ chat riêng. Vui lòng thêm Bảo Bảo vào nhóm để sử dụng.",
+      { parse_mode: "HTML" },
+    );
+    return;
+  }
+
+  const dateArg = extractDateArg(msg.text);
+  const now = parseReportDate(dateArg, new Date(), deps.config.timezone);
+  if (!now) {
+    await sendTelegramMessage(
+      deps.tg,
+      chatId,
+      "Định dạng ngày không hợp lệ. Hãy dùng <code>/chart</code>, <code>/chart dd-mm</code> hoặc <code>/chart dd-mm-yyyy</code>.",
+      { parse_mode: "HTML" },
+    );
+    return;
+  }
+
+  const subscribedKey = getChatProject(chatId);
+  if (!subscribedKey) {
+    await sendTelegramMessage(
+      deps.tg,
+      chatId,
+      "Nhóm này chưa đăng ký project nào. Hãy dùng /project để đăng ký.",
+      { parse_mode: "HTML" },
+    );
+    return;
+  }
+
+  const projects = await resolveProjectSprintList(deps.env, deps.config, {
+    filterChatId: chatId,
+    projectNames: deps.projectNames,
+  });
+
+  if (projects.length === 0) {
+    const projectLabel = displayName(deps.config, deps.projectNames, subscribedKey);
+    await sendTelegramMessage(
+      deps.tg,
+      chatId,
+      `Dự án <b>${projectLabel}</b> hiện không có sprint nào đang chạy trên Jira. Hãy kiểm tra trạng thái sprint hoặc dùng /project để đổi sang dự án khác.`,
+      { parse_mode: "HTML" },
+    );
+    return;
+  }
+
+  logger.info({ chatId, projects: projects.map((p) => p.key) }, "/chart run");
+
+  for (const p of projects) {
+    const stopTyping = startTypingIndicator(deps.tg, chatId, "upload_photo");
+    try {
+      const { burndownPng, burndownCaption } = await buildDigest(deps.env, deps.config, p, now);
+      if (!burndownPng) {
+        await sendTelegramMessage(
+          deps.tg,
+          chatId,
+          `Không có dữ liệu burndown cho <b>${p.projectName}</b> (sprint thiếu start/end date).`,
+          { parse_mode: "HTML" },
+        );
+        continue;
+      }
+      await sendTelegramPhoto(
+        deps.tg,
+        chatId,
+        burndownPng,
+        `burndown-${p.key}.png`,
+        { caption: burndownCaption ?? undefined, parse_mode: "HTML" },
+      );
+    } catch (err) {
+      logger.error(
+        { project: p.key, chatId, err: (err as Error).message },
+        "/chart build failed",
+      );
+      await sendTelegramMessage(
+        deps.tg,
+        chatId,
+        `Không tạo được chart cho <b>${p.key}</b>. Lỗi: ${(err as Error).message}`,
+        { parse_mode: "HTML" },
+      );
+    } finally {
+      stopTyping();
+    }
+  }
+}
+
 export async function handleReport(
   deps: CommandDeps,
   msg: TelegramMessage,
