@@ -140,8 +140,16 @@ export function computeBurndown(
     const isToday = day.key === todayKey;
 
     let actual: number | null = null;
-    if (eod <= nowMs) actual = remainingAt(eod);
-    else if (isToday) actual = remainingAt(nowMs);
+    if (eod <= nowMs) {
+      actual = remainingAt(eod);
+    } else if (isToday) {
+      // Live snapshot for today. Skip when it would only duplicate the prior
+      // point — a flat horizontal segment from "yesterday EOD" to "now" reads
+      // like the team has stalled, when really the day just hasn't burned yet.
+      const liveActual = remainingAt(nowMs);
+      const prevActual = points[points.length - 1]?.actual ?? null;
+      if (liveActual !== prevActual) actual = liveActual;
+    }
 
     points.push({
       label: `${String(day.d).padStart(2, "0")}/${String(day.m).padStart(2, "0")}`,
