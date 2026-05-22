@@ -84,13 +84,14 @@ export async function handleChart(
 ): Promise<void> {
   if (!msg.from || !msg.text) return;
   const chatId = String(msg.chat.id);
+  const threadId = msg.message_thread_id;
 
   if (!isAllowedChat(deps.auth, msg.chat.type, msg.from.id)) {
     await sendTelegramMessage(
       deps.tg,
       chatId,
       "Bảo Bảo không hỗ trợ chat riêng. Vui lòng thêm Bảo Bảo vào nhóm để sử dụng.",
-      { parse_mode: "HTML" },
+      { parse_mode: "HTML", message_thread_id: threadId },
     );
     return;
   }
@@ -102,7 +103,7 @@ export async function handleChart(
       deps.tg,
       chatId,
       "Định dạng ngày không hợp lệ. Hãy dùng <code>/chart</code>, <code>/chart dd-mm</code> hoặc <code>/chart dd-mm-yyyy</code>.",
-      { parse_mode: "HTML" },
+      { parse_mode: "HTML", message_thread_id: threadId },
     );
     return;
   }
@@ -113,7 +114,7 @@ export async function handleChart(
       deps.tg,
       chatId,
       "Nhóm này chưa đăng ký project nào. Hãy dùng /project để đăng ký.",
-      { parse_mode: "HTML" },
+      { parse_mode: "HTML", message_thread_id: threadId },
     );
     return;
   }
@@ -129,15 +130,15 @@ export async function handleChart(
       deps.tg,
       chatId,
       `Dự án <b>${projectLabel}</b> hiện không có sprint nào đang chạy trên Jira. Hãy kiểm tra trạng thái sprint hoặc dùng /project để đổi sang dự án khác.`,
-      { parse_mode: "HTML" },
+      { parse_mode: "HTML", message_thread_id: threadId },
     );
     return;
   }
 
-  logger.info({ chatId, projects: projects.map((p) => p.key) }, "/chart run");
+  logger.info({ chatId, threadId, projects: projects.map((p) => p.key) }, "/chart run");
 
   for (const p of projects) {
-    const stopTyping = startTypingIndicator(deps.tg, chatId, "upload_photo");
+    const stopTyping = startTypingIndicator(deps.tg, chatId, "upload_photo", threadId);
     try {
       const { burndownPng, burndownCaption } = await buildDigest(deps.env, deps.config, p, now);
       if (!burndownPng) {
@@ -145,7 +146,7 @@ export async function handleChart(
           deps.tg,
           chatId,
           `Không có dữ liệu burndown cho <b>${p.projectName}</b> (sprint thiếu start/end date).`,
-          { parse_mode: "HTML" },
+          { parse_mode: "HTML", message_thread_id: threadId },
         );
         continue;
       }
@@ -154,7 +155,11 @@ export async function handleChart(
         chatId,
         burndownPng,
         `burndown-${p.key}.png`,
-        { caption: burndownCaption ?? undefined, parse_mode: "HTML" },
+        {
+          caption: burndownCaption ?? undefined,
+          parse_mode: "HTML",
+          message_thread_id: threadId,
+        },
       );
     } catch (err) {
       logger.error(
@@ -165,7 +170,7 @@ export async function handleChart(
         deps.tg,
         chatId,
         `Không tạo được chart cho <b>${p.key}</b>. Lỗi: ${(err as Error).message}`,
-        { parse_mode: "HTML" },
+        { parse_mode: "HTML", message_thread_id: threadId },
       );
     } finally {
       stopTyping();
@@ -179,13 +184,14 @@ export async function handleBrief(
 ): Promise<void> {
   if (!msg.from || !msg.text) return;
   const chatId = String(msg.chat.id);
+  const threadId = msg.message_thread_id;
 
   if (!isAllowedChat(deps.auth, msg.chat.type, msg.from.id)) {
     await sendTelegramMessage(
       deps.tg,
       chatId,
       "Bảo Bảo không hỗ trợ chat riêng. Vui lòng thêm Bảo Bảo vào nhóm để sử dụng.",
-      { parse_mode: "HTML" },
+      { parse_mode: "HTML", message_thread_id: threadId },
     );
     return;
   }
@@ -197,7 +203,7 @@ export async function handleBrief(
       deps.tg,
       chatId,
       "Định dạng ngày không hợp lệ. Hãy dùng <code>/brief</code>, <code>/brief dd-mm</code> hoặc <code>/brief dd-mm-yyyy</code>.",
-      { parse_mode: "HTML" },
+      { parse_mode: "HTML", message_thread_id: threadId },
     );
     return;
   }
@@ -208,7 +214,7 @@ export async function handleBrief(
       deps.tg,
       chatId,
       "Nhóm này chưa đăng ký project nào. Hãy dùng /project để đăng ký.",
-      { parse_mode: "HTML" },
+      { parse_mode: "HTML", message_thread_id: threadId },
     );
     return;
   }
@@ -224,7 +230,7 @@ export async function handleBrief(
       deps.tg,
       chatId,
       `Dự án <b>${projectLabel}</b> hiện không có sprint nào đang chạy trên Jira. Hãy kiểm tra trạng thái sprint hoặc dùng /project để đổi sang dự án khác.`,
-      { parse_mode: "HTML" },
+      { parse_mode: "HTML", message_thread_id: threadId },
     );
     return;
   }
@@ -235,7 +241,7 @@ export async function handleBrief(
       deps.tg,
       chatId,
       "LLM chưa được bật, không tạo được brief. Liên hệ admin để bật <code>llm.enabled</code> trong config.",
-      { parse_mode: "HTML" },
+      { parse_mode: "HTML", message_thread_id: threadId },
     );
     return;
   }
@@ -244,18 +250,18 @@ export async function handleBrief(
     timeZone: deps.config.timezone,
   }).format(now);
 
-  logger.info({ chatId, runDate, projects: projects.map((p) => p.key) }, "/brief run");
+  logger.info({ chatId, threadId, runDate, projects: projects.map((p) => p.key) }, "/brief run");
 
   const projectsLabel = projects.map((p) => `<b>${p.projectName}</b>`).join(", ");
   await sendTelegramMessage(
     deps.tg,
     chatId,
     `Bảo Bảo đang tạo Daily Brief cho dự án ${projectsLabel}. Chờ Bảo Bảo xíu nhé...`,
-    { parse_mode: "HTML" },
+    { parse_mode: "HTML", message_thread_id: threadId },
   );
 
   for (const p of projects) {
-    const stopTyping = startTypingIndicator(deps.tg, chatId, "typing");
+    const stopTyping = startTypingIndicator(deps.tg, chatId, "typing", threadId);
     try {
       const { digest } = await buildDigest(deps.env, deps.config, p, now);
       const asOf = startOfDayInTz(now, deps.config.timezone);
@@ -290,14 +296,16 @@ export async function handleBrief(
       const insight = formatLlmInsight(digest.briefNotes);
       if (insight) {
         for (const chunk of splitMessage(insight)) {
-          await sendTelegramMessage(deps.tg, chatId, chunk);
+          await sendTelegramMessage(deps.tg, chatId, chunk, {
+            message_thread_id: threadId,
+          });
         }
       } else {
         await sendTelegramMessage(
           deps.tg,
           chatId,
           `Không tạo được brief cho <b>${p.projectName}</b> (LLM trả lỗi).`,
-          { parse_mode: "HTML" },
+          { parse_mode: "HTML", message_thread_id: threadId },
         );
       }
     } catch (err) {
@@ -309,7 +317,7 @@ export async function handleBrief(
         deps.tg,
         chatId,
         `Không tạo được brief cho <b>${p.key}</b>. Lỗi: ${(err as Error).message}`,
-        { parse_mode: "HTML" },
+        { parse_mode: "HTML", message_thread_id: threadId },
       );
     } finally {
       stopTyping();
@@ -323,13 +331,14 @@ export async function handleReport(
 ): Promise<void> {
   if (!msg.from || !msg.text) return;
   const chatId = String(msg.chat.id);
+  const threadId = msg.message_thread_id;
 
   if (!isAllowedChat(deps.auth, msg.chat.type, msg.from.id)) {
     await sendTelegramMessage(
       deps.tg,
       chatId,
       "Bảo Bảo không hỗ trợ chat riêng. Vui lòng thêm Bảo Bảo vào nhóm để sử dụng.",
-      { parse_mode: "HTML" },
+      { parse_mode: "HTML", message_thread_id: threadId },
     );
     return;
   }
@@ -341,7 +350,7 @@ export async function handleReport(
       deps.tg,
       chatId,
       "Định dạng ngày không hợp lệ. Hãy dùng <code>/report</code>, <code>/report dd-mm</code> hoặc <code>/report dd-mm-yyyy</code>.",
-      { parse_mode: "HTML" },
+      { parse_mode: "HTML", message_thread_id: threadId },
     );
     return;
   }
@@ -352,7 +361,7 @@ export async function handleReport(
       deps.tg,
       chatId,
       "Nhóm này chưa đăng ký project nào. Hãy dùng /project để đăng ký.",
-      { parse_mode: "HTML" },
+      { parse_mode: "HTML", message_thread_id: threadId },
     );
     return;
   }
@@ -368,7 +377,7 @@ export async function handleReport(
       deps.tg,
       chatId,
       `Dự án <b>${projectLabel}</b> hiện không có sprint nào đang chạy trên Jira. Hãy kiểm tra trạng thái sprint hoặc dùng /project để đổi sang dự án khác.`,
-      { parse_mode: "HTML" },
+      { parse_mode: "HTML", message_thread_id: threadId },
     );
     return;
   }
@@ -381,18 +390,18 @@ export async function handleReport(
   const windowDateLabel =
     win.label === "weekend" ? `${win.sinceLabel} → ${win.untilLabel}` : win.untilLabel;
 
-  logger.info({ chatId, runDate, projects: projects.map((p) => p.key) }, "/report run");
+  logger.info({ chatId, threadId, runDate, projects: projects.map((p) => p.key) }, "/report run");
 
   const projectsLabel = projects.map((p) => `<b>${p.projectName}</b>`).join(", ");
   await sendTelegramMessage(
     deps.tg,
     chatId,
     `Bảo Bảo đang tạo report cho dự án ${projectsLabel}. Chờ Bảo Bảo xíu nhé...`,
-    { parse_mode: "HTML" },
+    { parse_mode: "HTML", message_thread_id: threadId },
   );
 
   for (const p of projects) {
-    const stopTyping = startTypingIndicator(deps.tg, chatId, "typing");
+    const stopTyping = startTypingIndicator(deps.tg, chatId, "typing", threadId);
     try {
       const { digest, burndownPng, burndownCaption } = await buildDigest(
         deps.env,
@@ -443,19 +452,25 @@ export async function handleReport(
       const completed = formatCompletedSection(digest, windowLabel, windowDateLabel);
       const msg1 = completed ? `${brief}\n\n${completed}` : brief;
       for (const chunk of splitMessage(msg1)) {
-        await sendTelegramMessage(deps.tg, chatId, chunk);
+        await sendTelegramMessage(deps.tg, chatId, chunk, {
+          message_thread_id: threadId,
+        });
       }
 
       // Message 2: burndown photo
       if (burndownPng) {
-        const stopUploading = startTypingIndicator(deps.tg, chatId, "upload_photo");
+        const stopUploading = startTypingIndicator(deps.tg, chatId, "upload_photo", threadId);
         try {
           await sendTelegramPhoto(
             deps.tg,
             chatId,
             burndownPng,
             `burndown-${p.key}.png`,
-            { caption: burndownCaption ?? undefined, parse_mode: "HTML" },
+            {
+              caption: burndownCaption ?? undefined,
+              parse_mode: "HTML",
+              message_thread_id: threadId,
+            },
           );
         } catch (err) {
           logger.warn(
@@ -471,7 +486,9 @@ export async function handleReport(
       const insight = formatLlmInsight(digest.briefNotes);
       if (insight) {
         for (const chunk of splitMessage(insight)) {
-          await sendTelegramMessage(deps.tg, chatId, chunk);
+          await sendTelegramMessage(deps.tg, chatId, chunk, {
+            message_thread_id: threadId,
+          });
         }
       }
     } catch (err) {
@@ -483,7 +500,7 @@ export async function handleReport(
         deps.tg,
         chatId,
         `Không tạo được report cho <b>${p.key}</b>. Lỗi: ${(err as Error).message}`,
-        { parse_mode: "HTML" },
+        { parse_mode: "HTML", message_thread_id: threadId },
       );
     } finally {
       stopTyping();

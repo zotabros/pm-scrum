@@ -57,13 +57,18 @@ export async function handleProject(
 ): Promise<void> {
   if (!msg.from) return;
   const chatId = String(msg.chat.id);
+  const threadId = msg.message_thread_id;
   if (!isAdmin(deps.auth, msg.from.id)) {
-    await sendTelegramMessage(deps.tg, chatId, ADMIN_ONLY, { parse_mode: "HTML" });
+    await sendTelegramMessage(deps.tg, chatId, ADMIN_ONLY, {
+      parse_mode: "HTML",
+      message_thread_id: threadId,
+    });
     return;
   }
   if (deps.config.projects.length === 0) {
     await sendTelegramMessage(deps.tg, chatId, "Chưa có project nào được cấu hình.", {
       parse_mode: "HTML",
+      message_thread_id: threadId,
     });
     return;
   }
@@ -72,9 +77,9 @@ export async function handleProject(
     deps.tg,
     chatId,
     "Chọn 1 project để nhận report cho nhóm này (mỗi nhóm chỉ nhận 1 project tại 1 thời điểm). Bấm lại project đang chọn để huỷ.",
-    { reply_markup: keyboard, parse_mode: "HTML" },
+    { reply_markup: keyboard, parse_mode: "HTML", message_thread_id: threadId },
   );
-  logger.info({ chatId, user: msg.from.id }, "/project menu sent");
+  logger.info({ chatId, threadId, user: msg.from.id }, "/project menu sent");
 }
 
 export async function handleStart(
@@ -83,9 +88,11 @@ export async function handleStart(
 ): Promise<void> {
   if (!msg.from) return;
   const chatId = String(msg.chat.id);
+  const threadId = msg.message_thread_id;
   if (!isAllowedChat(deps.auth, msg.chat.type, msg.from.id)) {
     await sendTelegramMessage(deps.tg, chatId, PRIVATE_NOT_SUPPORTED, {
       parse_mode: "HTML",
+      message_thread_id: threadId,
     });
     return;
   }
@@ -109,8 +116,12 @@ export async function handleStart(
     await sendTelegramMessage(deps.tg, chatId, text, {
       reply_markup: keyboard,
       parse_mode: "HTML",
+      message_thread_id: threadId,
     });
   } else {
-    await sendTelegramMessage(deps.tg, chatId, text, { parse_mode: "HTML" });
+    await sendTelegramMessage(deps.tg, chatId, text, {
+      parse_mode: "HTML",
+      message_thread_id: threadId,
+    });
   }
 }

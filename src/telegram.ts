@@ -53,7 +53,11 @@ export async function sendTelegramMessage(
   opts: TelegramOptions,
   chatId: string,
   text: string,
-  extra: { reply_markup?: InlineKeyboardMarkup; parse_mode?: string } = {},
+  extra: {
+    reply_markup?: InlineKeyboardMarkup;
+    parse_mode?: string;
+    message_thread_id?: number;
+  } = {},
 ): Promise<void> {
   await callBotApi(opts, "sendMessage", {
     chat_id: chatId,
@@ -61,6 +65,7 @@ export async function sendTelegramMessage(
     parse_mode: extra.parse_mode ?? "MarkdownV2",
     disable_web_page_preview: true,
     reply_markup: extra.reply_markup,
+    message_thread_id: extra.message_thread_id,
   });
 }
 
@@ -69,7 +74,11 @@ export async function sendTelegramPhoto(
   chatId: string,
   photo: Buffer,
   filename = "burndown.png",
-  extra: { caption?: string; parse_mode?: "HTML" | "MarkdownV2" } = {},
+  extra: {
+    caption?: string;
+    parse_mode?: "HTML" | "MarkdownV2";
+    message_thread_id?: number;
+  } = {},
 ): Promise<void> {
   const url = `https://api.telegram.org/bot${opts.botToken}/sendPhoto`;
   let attempt = 0;
@@ -77,6 +86,9 @@ export async function sendTelegramPhoto(
     attempt += 1;
     const form = new FormData();
     form.append("chat_id", chatId);
+    if (extra.message_thread_id !== undefined) {
+      form.append("message_thread_id", String(extra.message_thread_id));
+    }
     form.append(
       "photo",
       new Blob([new Uint8Array(photo)], { type: "image/png" }),
@@ -176,9 +188,15 @@ export async function sendChatAction(
     | "typing"
     | "upload_photo"
     | "upload_document" = "typing",
+  messageThreadId?: number,
 ): Promise<void> {
   try {
-    await callBotApi(opts, "sendChatAction", { chat_id: chatId, action }, 5_000);
+    await callBotApi(
+      opts,
+      "sendChatAction",
+      { chat_id: chatId, action, message_thread_id: messageThreadId },
+      5_000,
+    );
   } catch {
     // best-effort; never fail the parent task because of a typing ping
   }
@@ -193,10 +211,11 @@ export function startTypingIndicator(
   opts: TelegramOptions,
   chatId: string,
   action: "typing" | "upload_photo" = "typing",
+  messageThreadId?: number,
 ): () => void {
-  void sendChatAction(opts, chatId, action);
+  void sendChatAction(opts, chatId, action, messageThreadId);
   const handle = setInterval(() => {
-    void sendChatAction(opts, chatId, action);
+    void sendChatAction(opts, chatId, action, messageThreadId);
   }, 4_000);
   return () => clearInterval(handle);
 }
