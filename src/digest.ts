@@ -139,7 +139,33 @@ export async function buildDigest(
   const statusMeta = await loadStatusCategoryMap(client);
 
   const sprintIssues = await searchJql(client, `sprint = ${project.sprint.id}`);
-  const expandedIssues = await expandSprintIssuesWithSubtasks(client, sprintIssues);
+  const expandedAll = await expandSprintIssuesWithSubtasks(client, sprintIssues);
+
+  // Drop tasks resolved BEFORE this sprint started. They were carried over
+  // from a previous sprint already-done and would otherwise be miscounted as
+  // work delivered in this sprint (inflating done counts, leaderboard, and
+  // burndown's baseline + actual line).
+  const sprintStartMs = project.sprint.startDate
+    ? new Date(project.sprint.startDate).getTime()
+    : null;
+  const expandedIssues = sprintStartMs
+    ? expandedAll.filter((i) => {
+        const rd = i.fields.resolutiondate;
+        if (!rd) return true;
+        const t = new Date(rd).getTime();
+        if (!Number.isFinite(t)) return true;
+        return t >= sprintStartMs;
+      })
+    : expandedAll;
+  if (expandedAll.length !== expandedIssues.length) {
+    logger.info(
+      {
+        project: project.key,
+        dropped: expandedAll.length - expandedIssues.length,
+      },
+      "excluded pre-sprint-start resolved tasks (carryover already-done)",
+    );
+  }
 
   const leafKeys = expandedIssues
     .filter((i) => !(i.fields.subtasks && i.fields.subtasks.length > 0))
@@ -198,9 +224,7 @@ export async function buildDigest(
   const leafIssues = expandedIssues.filter(
     (i) => !(i.fields.subtasks && i.fields.subtasks.length > 0),
   );
-  const sprintStart = project.sprint.startDate
-    ? new Date(project.sprint.startDate)
-    : null;
+  const sprintStart = sprintStartMs ? new Date(sprintStartMs) : null;
   const bucketIndex = new Map<string, "todo" | "inProgress" | "done">();
   for (const t of buckets.todo) bucketIndex.set(t.key, "todo");
   for (const t of buckets.inProgress) bucketIndex.set(t.key, "inProgress");
