@@ -465,11 +465,19 @@ export function computeBurnRate(digest: ProjectDigest): BurnRate | null {
   const { dayNumber, totalDays } = digest;
   const { done, total } = digest.counts;
   if (dayNumber < 1 || totalDays < 1 || total === 0) return null;
+  // Forecast is volatile before sprint has accumulated enough signal. Trying
+  // to extrapolate a daily rate from ~1 day of data produces nonsense like
+  // "projected 48 / 26 tasks" and false on-track status. Require at least 3
+  // days elapsed AND ≥25% of the sprint behind us before publishing a rate.
+  if (dayNumber < 3 || dayNumber / totalDays < 0.25) return null;
   const remainingDays = Math.max(0, totalDays - dayNumber);
   const doneRate = done / dayNumber;
   const remainingTasks = total - done;
   const requiredRate = remainingDays > 0 ? remainingTasks / remainingDays : remainingTasks;
-  const projectedDone = done + doneRate * remainingDays;
+  // Cap projection at total — you can't complete more tasks than exist. Lets
+  // gap reflect "tasks still uncompleted at this pace", never goes negative
+  // far beyond zero from extrapolation noise.
+  const projectedDone = Math.min(total, done + doneRate * remainingDays);
   const gap = total - projectedDone;
   const gapRatio = gap / total;
   let status: BurnRate["status"];
