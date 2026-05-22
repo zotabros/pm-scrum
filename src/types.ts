@@ -31,6 +31,11 @@ export interface JiraIssueFields {
   resolutiondate?: string | null;
   labels?: string[];
   subtasks?: JiraSubtask[];
+  parent?: {
+    id: string;
+    key: string;
+    fields?: { summary?: string; issuetype?: { name: string } };
+  };
 }
 
 export interface JiraIssue {
@@ -118,6 +123,20 @@ export interface ProjectDigest {
   timezone: string;
   llmNote?: string | null;
   briefNotes?: { items: string[] } | null;
+  scopeCreep?: ScopeCreepInfo | null;
+}
+
+export interface ScopeCreepAddedTask {
+  task: SprintDigestTask;
+  addedAt: string;
+  bucket: "todo" | "inProgress" | "done";
+  parentKey?: string;
+  parentSummary?: string;
+}
+
+export interface ScopeCreepInfo {
+  baselineTotal: number;
+  added: ScopeCreepAddedTask[];
 }
 
 export interface TelegramUser {

@@ -13,6 +13,7 @@ const FIELDS = [
   "resolutiondate",
   "labels",
   "subtasks",
+  "parent",
 ];
 
 export async function searchJql(

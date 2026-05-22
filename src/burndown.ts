@@ -103,35 +103,45 @@ export function computeBurndown(
   }
   if (days.length === 0) return [];
 
-  const total = leafIssues.length;
+  const liveTotal = leafIssues.length;
+  // Ideal: liveTotal (top-left) → 0 (bottom-right) over N working days.
+  // Actual at any cutoff t = liveTotal − #issues resolved by t.
   const N = days.length;
   const sprintStartMs = new Date(sprint.startDate).getTime();
   const nowMs = now.getTime();
   const points: BurndownPoint[] = [];
 
+  const doneCountAt = (t: number): number => {
+    let n = 0;
+    for (const issue of leafIssues) {
+      const res = issue.fields.resolutiondate;
+      if (!res) continue;
+      const rt = new Date(res).getTime();
+      if (Number.isFinite(rt) && rt <= t) n += 1;
+    }
+    return n;
+  };
+  const remainingAt = (t: number): number => liveTotal - doneCountAt(t);
+
+  // Always anchor the chart's starting point at liveTotal — the visual
+  // convention is "sprint kicks off with nothing burned yet". Even if a few
+  // tasks were resolved before sprintStart, we still render the burn from
+  // the full live scope so the chart begins at the top-left corner.
   points.push({
     label: "Bắt đầu",
-    ideal: total,
-    actual: sprintStartMs <= nowMs ? total : null,
+    ideal: liveTotal,
+    actual: sprintStartMs <= nowMs ? liveTotal : null,
   });
 
   for (let i = 0; i < N; i++) {
     const day = days[i]!;
-    const ideal = total - (total * (i + 1)) / N;
+    const ideal = liveTotal - (liveTotal * (i + 1)) / N;
     const eod = tzInstant(day.y, day.m, day.d, 24, 0, timezone).getTime();
     const isToday = day.key === todayKey;
 
     let actual: number | null = null;
-    if (!isToday && eod <= nowMs) {
-      let doneCount = 0;
-      for (const issue of leafIssues) {
-        const res = issue.fields.resolutiondate;
-        if (!res) continue;
-        const t = new Date(res).getTime();
-        if (Number.isFinite(t) && t <= eod) doneCount += 1;
-      }
-      actual = total - doneCount;
-    }
+    if (eod <= nowMs) actual = remainingAt(eod);
+    else if (isToday) actual = remainingAt(nowMs);
 
     points.push({
       label: `${String(day.d).padStart(2, "0")}/${String(day.m).padStart(2, "0")}`,
@@ -180,7 +190,10 @@ export async function renderBurndownPng(
             ticks: {
               beginAtZero: true,
               precision: 0,
-              max: points[0]?.ideal,
+              max: Math.max(
+                points[0]?.ideal ?? 0,
+                ...points.map((p) => (typeof p.actual === "number" ? p.actual : 0)),
+              ),
             },
             scaleLabel: { display: true, labelString: "Tasks remaining" },
           },

@@ -220,6 +220,80 @@ export interface FormatInput {
   windowDateLabel: string; // "2026-04-13" or "2026-04-10 → 2026-04-13"
 }
 
+const BUCKET_LABEL: Record<"done" | "inProgress" | "todo", string> = {
+  done: "✅",
+  inProgress: "🟡",
+  todo: "⚪",
+};
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/**
+ * Compact HTML summary of tasks added to the sprint in the last `hoursBack`
+ * hours. Designed to be appended to the burndown photo caption (Telegram
+ * caption limit is 1024 chars), so it groups added subtasks under their
+ * parent and truncates aggressively.
+ *
+ * Returns "" if nothing new in the window.
+ */
+export function formatRecentAdditionsCaption(
+  digest: ProjectDigest,
+  now: Date,
+  hoursBack = 24,
+  maxParents = 5,
+): string {
+  const sc = digest.scopeCreep;
+  if (!sc || sc.added.length === 0) return "";
+  const cutoff = now.getTime() - hoursBack * 3_600_000;
+  const recent = sc.added.filter((a) => {
+    const t = new Date(a.addedAt).getTime();
+    return Number.isFinite(t) && t >= cutoff && t <= now.getTime();
+  });
+  if (recent.length === 0) return "";
+
+  type Group = {
+    title: string;
+    count: number;
+    isStandalone: boolean;
+  };
+  const groups = new Map<string, Group>();
+  for (const a of recent) {
+    const parentKey = a.parentKey;
+    const parentSummary = a.parentSummary;
+    if (parentKey) {
+      const k = parentKey;
+      const g = groups.get(k);
+      if (g) g.count += 1;
+      else
+        groups.set(k, {
+          title: `${parentKey}${parentSummary ? ` · ${parentSummary}` : ""}`,
+          count: 1,
+          isStandalone: false,
+        });
+    } else {
+      const k = a.task.key;
+      groups.set(k, {
+        title: `${a.task.key} · ${a.task.summary}`,
+        count: 1,
+        isStandalone: true,
+      });
+    }
+  }
+  const sorted = [...groups.values()].sort((a, b) => b.count - a.count);
+  const shown = sorted.slice(0, maxParents);
+
+  const trunc = (s: string, n = 60): string => (s.length <= n ? s : s.slice(0, n - 1) + "…");
+  const lines = shown.map((g) => {
+    const tail = g.isStandalone ? "" : ` (+${g.count} subtask${g.count > 1 ? "s" : ""})`;
+    return `• ${escapeHtml(trunc(g.title))}${escapeHtml(tail)}`;
+  });
+  const more =
+    sorted.length > shown.length ? `\n…và ${sorted.length - shown.length} task khác` : "";
+  return `➕ <b>Mới bổ sung (${hoursBack}h):</b> ${recent.length} task\n${lines.join("\n")}${more}`;
+}
+
 export function formatDigest({
   digest,
   runDate,

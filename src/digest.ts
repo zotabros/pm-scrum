@@ -1,7 +1,7 @@
 import type { Config, Env } from "./config.js";
 import { resolveJiraCreds } from "./config.js";
 import { logger } from "./logger.js";
-import { getWindow, startOfDayInTz } from "./window.js";
+import { getWindow } from "./window.js";
 import { createJiraClient } from "./jira/client.js";
 import {
   findActiveSprintForProject,
@@ -10,6 +10,7 @@ import {
 import { searchJql } from "./jira/issues.js";
 import {
   bucketSprintIssuesAt,
+  detectScopeCreep,
   detectWorkingSaturdays,
   enrichInProgressHours,
   expandSprintIssuesWithSubtasks,
@@ -19,7 +20,7 @@ import {
   prefetchChangelogs,
   sprintDayInfo,
 } from "./aggregate.js";
-import { computeLeaderboard } from "./format.js";
+import { computeLeaderboard, formatRecentAdditionsCaption } from "./format.js";
 import { safeBuildBurndownPng } from "./burndown.js";
 import { sprintHealthNote } from "./llm.js";
 import { getChats, listSubscribed } from "./storage/subscriptions.js";
@@ -145,9 +146,11 @@ export async function buildDigest(
     .map((i) => i.key);
   const changelogCache = await prefetchChangelogs(client, leafKeys);
 
-  // Snapshot cutoff: state as of 00:00 of `now`'s local day. Excludes today's
-  // changes so a brief/report for date D reflects end-of-(D-1) state.
-  const asOf = startOfDayInTz(now, config.timezone);
+  // Live snapshot: state at `now`. Counts, burndown caption, and chart all
+  // share the same cutoff so totals never disagree. Scope creep (issues added
+  // to the sprint after start) is surfaced separately via detectScopeCreep so
+  // the growing total has a visible explanation.
+  const asOf = now;
   const buckets = bucketSprintIssuesAt(expandedIssues, statusMeta, changelogCache, asOf);
   const workingSaturdays = detectWorkingSaturdays(
     changelogCache.values(),
@@ -192,6 +195,26 @@ export async function buildDigest(
 
   const { day, total } = sprintDayInfo(project.sprint, now);
 
+  const leafIssues = expandedIssues.filter(
+    (i) => !(i.fields.subtasks && i.fields.subtasks.length > 0),
+  );
+  const sprintStart = project.sprint.startDate
+    ? new Date(project.sprint.startDate)
+    : null;
+  const bucketIndex = new Map<string, "todo" | "inProgress" | "done">();
+  for (const t of buckets.todo) bucketIndex.set(t.key, "todo");
+  for (const t of buckets.inProgress) bucketIndex.set(t.key, "inProgress");
+  for (const t of buckets.done) bucketIndex.set(t.key, "done");
+  const scopeCreep = sprintStart
+    ? detectScopeCreep(
+        leafIssues,
+        changelogCache,
+        project.sprint.id,
+        sprintStart,
+        (k) => bucketIndex.get(k) ?? null,
+      )
+    : null;
+
   const digest: ProjectDigest = {
     projectKey: project.key,
     projectName: project.projectName,
@@ -212,6 +235,7 @@ export async function buildDigest(
     windowSince: win.since,
     windowUntil: win.until,
     timezone: config.timezone,
+    scopeCreep,
   };
 
   const apiKey = config.llm.api_key ?? env.ANTHROPIC_API_KEY;
@@ -231,9 +255,6 @@ export async function buildDigest(
     );
   }
 
-  const leafIssues = expandedIssues.filter(
-    (i) => !(i.fields.subtasks && i.fields.subtasks.length > 0),
-  );
   const burndownTitle = `Burndown — ${project.projectName} — ${project.sprint.name}`;
   const burndownPng = await safeBuildBurndownPng(
     project.sprint,
@@ -244,7 +265,16 @@ export async function buildDigest(
     burndownTitle,
   );
 
-  const burndownCaption = burndownPng ? buildBurndownCaption(leafIssues, now) : null;
+  let burndownCaption = burndownPng ? buildBurndownCaption(leafIssues, now) : null;
+  if (burndownCaption) {
+    const additions = formatRecentAdditionsCaption(digest, now, 24);
+    if (additions) {
+      const combined = `${burndownCaption}\n\n${additions}`;
+      // Telegram caption limit is 1024 chars; truncate gracefully if needed.
+      burndownCaption =
+        combined.length <= 1024 ? combined : combined.slice(0, 1020) + "…";
+    }
+  }
 
   return { digest, burndownPng, burndownCaption };
 }

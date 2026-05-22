@@ -1,5 +1,12 @@
 import type { AxiosInstance } from "axios";
-import type { JiraChangelogEntry, JiraIssue, JiraSprint, SprintDigestTask } from "./types.js";
+import type {
+  JiraChangelogEntry,
+  JiraIssue,
+  JiraSprint,
+  ScopeCreepAddedTask,
+  ScopeCreepInfo,
+  SprintDigestTask,
+} from "./types.js";
 import { getIssueChangelog, loadStatusCategoryMap, searchJql, type StatusMeta } from "./jira/issues.js";
 import { logger } from "./logger.js";
 
@@ -593,6 +600,126 @@ export function bucketSprintIssues(issues: JiraIssue[]): SprintBuckets {
   inProgress.sort(sorter);
 
   return { todo, inProgress, done };
+}
+
+/**
+ * Detect issues that were added to the sprint AFTER sprint.startDate.
+ *
+ * Strategy:
+ * 1. Inspect changelog for `field === "Sprint"` items where the sprint id
+ *    appears in `to` but not in `from` — that entry's timestamp is when the
+ *    issue entered this sprint.
+ * 2. Fallback: if no changelog signal, use `issue.fields.created` as the
+ *    entry timestamp (an issue created mid-sprint and put directly in the
+ *    sprint may not generate a Sprint changelog item depending on the Jira
+ *    configuration).
+ *
+ * Only leaf issues are considered (parents-with-subtasks are filtered out).
+ */
+/**
+ * Reconstruct when each leaf issue entered the sprint.
+ * - Uses changelog Sprint-field add entries when available (earliest add).
+ * - Falls back to `issue.fields.created` for issues with no changelog signal
+ *   but a `created` timestamp after sprintStart (typical for issues created
+ *   directly into the sprint).
+ * - Defaults to sprintStart for everything else (i.e. assume present from
+ *   day 0).
+ */
+export function buildSprintEntryMap(
+  leafIssues: JiraIssue[],
+  changelogCache: Map<string, JiraChangelogEntry[]>,
+  sprintId: number,
+  sprintStart: Date,
+): Map<string, Date> {
+  const sprintIdStr = String(sprintId);
+  const out = new Map<string, Date>();
+  for (const issue of leafIssues) {
+    if (hasSubtasks(issue)) continue;
+    let addedAt: Date | null = null;
+    const changelog = changelogCache.get(issue.key) ?? [];
+    for (const entry of changelog) {
+      for (const item of entry.items) {
+        if (item.field !== "Sprint") continue;
+        const inList = (raw: string | null): boolean =>
+          !!raw && raw.split(",").map((s) => s.trim()).includes(sprintIdStr);
+        if (inList(item.to) && !inList(item.from)) {
+          const at = new Date(entry.created);
+          if (Number.isFinite(at.getTime())) {
+            if (!addedAt || at < addedAt) addedAt = at;
+          }
+        }
+      }
+    }
+    if (!addedAt && issue.fields.created) {
+      const created = new Date(issue.fields.created);
+      if (Number.isFinite(created.getTime()) && created.getTime() > sprintStart.getTime()) {
+        addedAt = created;
+      }
+    }
+    out.set(issue.key, addedAt ?? sprintStart);
+  }
+  return out;
+}
+
+export function detectScopeCreep(
+  leafIssues: JiraIssue[],
+  changelogCache: Map<string, JiraChangelogEntry[]>,
+  sprintId: number,
+  sprintStart: Date,
+  bucketOf: (key: string) => "todo" | "inProgress" | "done" | null,
+): ScopeCreepInfo {
+  const sprintIdStr = String(sprintId);
+  const startMs = sprintStart.getTime();
+  const added: ScopeCreepAddedTask[] = [];
+
+  for (const issue of leafIssues) {
+    if (hasSubtasks(issue)) continue;
+    let addedAt: Date | null = null;
+
+    const changelog = changelogCache.get(issue.key) ?? [];
+    for (const entry of changelog) {
+      for (const item of entry.items) {
+        if (item.field !== "Sprint") continue;
+        const inList = (raw: string | null): boolean => {
+          if (!raw) return false;
+          return raw
+            .split(",")
+            .map((s) => s.trim())
+            .includes(sprintIdStr);
+        };
+        if (inList(item.to) && !inList(item.from)) {
+          const at = new Date(entry.created);
+          if (Number.isFinite(at.getTime())) {
+            if (!addedAt || at < addedAt) addedAt = at;
+          }
+        }
+      }
+    }
+
+    if (!addedAt && issue.fields.created) {
+      const created = new Date(issue.fields.created);
+      if (Number.isFinite(created.getTime()) && created.getTime() > startMs) {
+        addedAt = created;
+      }
+    }
+
+    if (!addedAt || addedAt.getTime() <= startMs) continue;
+
+    const bucket = bucketOf(issue.key);
+    if (!bucket) continue;
+
+    added.push({
+      task: toTask(issue),
+      addedAt: addedAt.toISOString(),
+      bucket,
+      parentKey: issue.fields.parent?.key,
+      parentSummary: issue.fields.parent?.fields?.summary,
+    });
+  }
+
+  added.sort((a, b) => a.addedAt.localeCompare(b.addedAt) || a.task.key.localeCompare(b.task.key));
+  const baselineTotal = leafIssues.length - added.length;
+  return { baselineTotal, added };
 }
 
 export function sprintDayInfo(sprint: JiraSprint, now: Date): { day: number; total: number } {
