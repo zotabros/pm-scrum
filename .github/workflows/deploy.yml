@@ -35,7 +35,7 @@ jobs:
       - name: Rsync code to server
         run: |
           rsync -rlptD --delete --no-owner --no-group \
-            --exclude='.env' --exclude='config.yaml' --exclude='data/' \
+            --exclude='.user.ini' --exclude='.env' --exclude='config.yaml' --exclude='data/' \
             --exclude='node_modules/' --exclude='.git/' --exclude='.github/' \
             --exclude='launchd/' --exclude='systemd/' --exclude='*.log' \
             --exclude='.well-known/' --exclude='proxy_cache_dir/' --exclude='logs/' \
