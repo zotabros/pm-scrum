@@ -15,62 +15,50 @@ env:
 
 jobs:
   build-and-deploy:
-    runs-on: [self-hosted, linux]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-
-      - name: Use Node.js 20
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: npm
-
-      - name: Install (build deps)
-        run: npm ci
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Build
-        run: npm run build
-
-      - name: Sync code to deploy dir
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Setup SSH
         run: |
-          set -euo pipefail
-          mkdir -p "$DEPLOY_DIR/data"
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
+      - name: Rsync code to server
+        run: |
           rsync -rlptD --delete --no-owner --no-group \
-            --exclude='.env' \
-            --exclude='config.yaml' \
-            --exclude='data/' \
-            --exclude='node_modules/' \
-            --exclude='.git/' \
-            --exclude='.github/' \
-            --exclude='launchd/' \
-            --exclude='systemd/' \
-            --exclude='*.log' \
-            --exclude='.well-known/' \
-            --exclude='proxy_cache_dir/' \
-            --exclude='logs/' \
-            ./ "$DEPLOY_DIR/"
-
-      - name: Install prod deps in deploy dir
-        run: |
-          cd "$DEPLOY_DIR"
-          npm ci --omit=dev
-
-      - name: First-run scaffolding
-        run: |
-          cd "$DEPLOY_DIR"
-          [ -f config.yaml ] || cp config.yaml.example config.yaml
-          [ -f data/subscriptions.json ] || npx tsx scripts/migrate-subscriptions.ts || true
-
-      - name: Reload PM2 app
-        run: |
-          cd "$DEPLOY_DIR"
-          if pm2 describe "$PM2_APP" >/dev/null 2>&1; then
-            pm2 reload ecosystem.config.cjs --only "$PM2_APP" --update-env
-          else
-            pm2 start ecosystem.config.cjs --only "$PM2_APP"
-          fi
-          pm2 save
+            --exclude='.env' --exclude='config.yaml' --exclude='data/' \
+            --exclude='node_modules/' --exclude='.git/' --exclude='.github/' \
+            --exclude='launchd/' --exclude='systemd/' --exclude='*.log' \
+            --exclude='.well-known/' --exclude='proxy_cache_dir/' --exclude='logs/' \
+            -e "ssh -i ~/.ssh/id_ed25519 -p ${{ secrets.SSH_PORT }}" \
+            ./ "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ env.DEPLOY_DIR }}/"
+      - name: Install prod deps + reload PM2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -e
+            export PM2_HOME=/home/deploy/.pm2
+            export PATH=$PATH:/www/server/nodejs/v22.22.1/bin
+            cd /www/wwwroot/scrum.dzapp.io.vn
+            npm ci --omit=dev
+            [ -f config.yaml ] || cp config.yaml.example config.yaml
+            [ -f data/subscriptions.json ] || npx tsx scripts/migrate-subscriptions.ts || true
+            if pm2 describe pm-scrum-bot >/dev/null 2>&1; then
+              pm2 reload ecosystem.config.cjs --only pm-scrum-bot --update-env
+            else
+              pm2 start ecosystem.config.cjs --only pm-scrum-bot
+            fi
+            pm2 save
