@@ -11,7 +11,7 @@ concurrency:
 
 env:
   DEPLOY_DIR: /www/wwwroot/scrum.dzapp.io.vn
-  PM2_APP: pm-scrum-bot
+  SERVICE: pm-scrum
 
 jobs:
   build-and-deploy:
@@ -41,7 +41,7 @@ jobs:
             --exclude='.well-known/' --exclude='proxy_cache_dir/' --exclude='logs/' \
             -e "ssh -i ~/.ssh/id_ed25519 -p ${{ secrets.SSH_PORT }}" \
             ./ "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ env.DEPLOY_DIR }}/"
-      - name: Install prod deps + reload PM2
+      - name: Install prod deps + restart service
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -50,15 +50,20 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           script: |
             set -e
-            export PM2_HOME=/home/deploy/.pm2
-            export PATH=$PATH:/www/server/nodejs/v22.22.1/bin
+            # Server chuyen tu EC2 (aaPanel + PM2) sang GCP (systemd) 09/09/2026.
+            # Node cua NodeSource nam o /usr/bin nen khong can them PATH rieng.
             cd /www/wwwroot/scrum.dzapp.io.vn
             npm ci --omit=dev
             [ -f config.yaml ] || cp config.yaml.example config.yaml
             [ -f data/subscriptions.json ] || npx tsx scripts/migrate-subscriptions.ts || true
-            if pm2 describe pm-scrum-bot >/dev/null 2>&1; then
-              pm2 reload ecosystem.config.cjs --only pm-scrum-bot --update-env
-            else
-              pm2 start ecosystem.config.cjs --only pm-scrum-bot
+            sudo /bin/systemctl restart pm-scrum
+            sleep 3
+            # KHONG dung sudo o buoc kiem: doc trang thai unit khong can quyen root,
+            # va sudoers khop theo dung danh sach tham so - them co nhu --quiet se
+            # khong khop, bi tu choi, va deploy thanh cong lai bi bao la that bai.
+            if ! systemctl is-active --quiet pm-scrum; then
+              echo "::error::pm-scrum failed to start after deploy"
+              systemctl status pm-scrum --no-pager -n 20 || true
+              exit 1
             fi
-            pm2 save
+            echo "[deploy] done - pm-scrum active"
